@@ -5,7 +5,7 @@ import os
 import uuid
 import io
 
-st.set_page_config(page_title="Project Ksheersagar – FGD for Farmers", layout="wide")
+st.set_page_config(page_title="Project Ksheersagar – Farmer Booklet", layout="wide")
 
 # --- Global Configuration and Data ---
 CSV_FILE = "fgd_farmer_survey.csv"
