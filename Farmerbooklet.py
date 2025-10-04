@@ -1,430 +1,452 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date
-import uuid
 import os
-import io
+import uuid
 
 # --- Streamlit Page Configuration ---
-st.set_page_config(page_title="Project Ksheersagar – Farmer Interview Booklet", layout="wide")
+st.set_page_config(page_title="Project Ksheersagar – TNS Self-Assessment", layout="wide")
 
-# --- Persistent storage file ---
-CSV_FILE = "farmer_interview.csv"
+# --- Global Configuration and State Initialization ---
+CSV_FILE = "self_assessment_TNS_responses.csv"
 
-# --- Helper Likert scales ---
-awareness_scale = ["Completely unaware", "Unaware", "Partially aware", "Aware", "Strongly aware"]
-knowledge_scale = ["Strongly uninformed/ill-informed", "Uninformed/ill-informed", "Partially knowledgeable", "Knowledgeable", "Strongly knowledgeable"]
-agreement_scale = ["Strongly disagree", "Disagree", "Partially agree", "d. Agree", "Strongly agree"]
-access_scale = ["Strongly inaccessible", "Inaccessible", "Partially accessible", "Accessible", "Strongly accessible"]
-affordability_scale = ["Strongly unaffordable", "Unaffordable", "Partially affordable", "Affordable", "Strongly affordable"]
-availability_scale = ["Completely Unavailable", "Unavailable", "Partially available", "Available", "Completely Available"]
-person_responsible_options = ["Husband", "Wife", "Workers", "Male children", "Female children"]
-economic_activities_options = ["Agriculture", "Dairy Farming", "Livestock Rearing", "Fisheries", "Daily Labor", "Private sector employment", "Government employment", "Trade/Shopkeeper", "Other"]
-breed_options = ["Local", "Cross breeds", "Pure breeds"]
-cow_breeds_options = ["Holstein Friesian (HF)", "Gir", "Jersey", "Red Sindhi", "Sahiwal", "Other"]
+if "step" not in st.session_state:
+    st.session_state.step = 0  # Start at Step 0 (Consent)
+if "responses" not in st.session_state:
+    st.session_state.responses = {}
 
-# --- Document Questions and Structure (Kept the same) ---
-QUESTIONS = {
-    "Background Information": {
-        "Individual Details": {
-            "Name": {"type": "text_input", "options": None},
-            "Age": {"type": "text_input", "options": None},
-            "Highest level of education": {"type": "text_input", "options": None},
-            "Number of years working as a dairy farmer": {"type": "text_input", "options": None}
-        }
-    },
-    "Basic Household Information": {
-        "What are the primary economic activities that you are involved in? (Multiple Answers Possible)": {"type": "multiselect", "options": economic_activities_options},
-        "Approximately, what percentage of households in this area have dairy farming as their primary source of income?": {"type": "radio", "options": ["5-20%", "20-50%", "50-70%", "70-90%", "More than 90%"]},
-        "How did you acquire your dairy farm land?": {"type": "radio", "options": ["Given by Parents", "Given by Government", "Given by Relatives", "Rented", "Purchased"]},
-        "What livestock are raised within the area? Please mention their composition as well. (Multiple Answers Possible)": {"type": "multiselect", "options": ["Cows", "Buffaloes", "Hens", "Goats", "Other"]},
-        "What are the animals mainly used for?": {"type": "radio", "options": ["Economic purpose", "Household consumption", "Other"]},
-        "Who are the major clients of the dairy in this area?": {"type": "text_input", "options": None},
-        "What do they purchase? (Multiple Answers Possible)": {"type": "multiselect", "options": ["Raw Milk", "Milk products like cheese, curd paneer etc", "Milk Powder", "Other"]},
-        "What type of breeds do you have in your dairy farm? (Multiple Answers Possible)": {"type": "multiselect", "options": breed_options},
-        "Which breeds of cows do you have? Please mention composition as well. (Multiple Answers Possible)": {"type": "multiselect", "options": cow_breeds_options},
-        "What are the difficulties in procuring higher quality breed cows? (Multiple Answers Possible)": {"type": "multiselect", "options": ["Buying cost", "Maintenance Cost", "Difficulty in Maintaining", "Lack of Space", "Lack of access to higher quality breeds"]},
-        "Where do you buy your cows from?": {"type": "text_input", "options": None},
-        "What is your source of money to conduct dairy farming activities?": {"type": "radio", "options": ["Personal Finances", "Borrowing from relatives/ friends", "Bank Loans", "Government funds", "Other"]}
-    },
-    "Animal Care": {
-        "Vaccination": {"I know what vaccinations are and how they will benefit my cattle": {"options": awareness_scale, "type": "radio"}, "I know yearly vaccination schedule for atleast 6 vaccines, and whom to approach for vaccinating my cattle": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of vaccinations to cattle health and want to vaccinate my cattle as per prescribed schedule": {"options": agreement_scale, "type": "radio"}, "I have 100% access to atleast 3 vaccination dosages for my cattle (via veterinarians, para vets or government health camps etc)": {"options": access_scale, "type": "radio"}, "I can afford vaccination dosages for 100% of my cattle": {"options": affordability_scale, "type": "radio"}, "I have 100% timely access to vaccination and vaccinate my cattle according to prescribed vaccination schedule": {"options": access_scale, "type": "radio"}, "I have 100% access to vaccination in close proximity (doorstep/BMC/ in village/ nearby villages) and vaccinate my cattle according to prescribed vaccination schedule": {"options": access_scale, "type": "radio"}},
-        "Deworming": {"I know what deworming is and how it will benefit my cattle": {"options": awareness_scale, "type": "radio"}, "I know yearly deworming schedule, and whom to approach for deworming my cattle": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of deworming to cattle health and want to deworm my cattle as per prescribed schedule": {"options": agreement_scale, "type": "radio"}, "I have 100% access to deworming tablets for my cattle (via veterinarians, para vets or government health camps etc)": {"options": access_scale, "type": "radio"}, "I can afford deworming services for 100% of my cattle": {"options": affordability_scale, "type": "radio"}, "I have 100% timely access to deworming and deworm my cattle according to prescribed deworming schedule": {"options": access_scale, "type": "radio"}, "I have 100% access to deworming in close proximity (doorstep/BMC/ in village/ nearby villages) and deworm my cattle according to prescribed deworming schedule": {"options": access_scale, "type": "radio"}},
-        "Tick Control": {"I know what tick control is and how it will benefit my cattle": {"options": awareness_scale, "type": "radio"}, "I know deticking methods and how to detick my cattle": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of deticking to cattle health and want to detick my cattle": {"options": agreement_scale, "type": "radio"}, "I have 100% access to deticking services for my cattle (via veterinarians, para vets or government health camps etc)": {"options": access_scale, "type": "radio"}, "I can afford deticking services for 100% of my cattle": {"options": affordability_scale, "type": "radio"}, "I have 100% timely access to deticking services and detick my cattle": {"options": access_scale, "type": "radio"}, "I have 100% access to deticking services in close proximity (doorstep/BMC/in village/ nearby villages) and detick my cattle according to prescribed schedule": {"options": access_scale, "type": "radio"}},
-        "Preventive Check-ups": {"I know what preventive check ups are and how they will benefit my cattle": {"options": awareness_scale, "type": "radio"}, "I know yearly preventive check up schedule, and whom to approach for checking my cattle": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of preventive check ups to cattle health and want to check my cattle as per prescribed schedule": {"options": agreement_scale, "type": "radio"}, "I have 100% access to preventive checkups for my cattle (via veterinarians, para vets or government health camps etc)": {"options": access_scale, "type": "radio"}, "I can afford preventive check ups for 100% of my cattle": {"options": affordability_scale, "type": "radio"}, "I have 100% timely access to preventive check ups and conduct checkups for my cattle according to prescribed schedule": {"options": access_scale, "type": "radio"}, "I have 100% access to check ups in close proximity (doorstep/BMC/in village/ nearby villages) and check my cattle according to prescribed schedule": {"options": access_scale, "type": "radio"}},
-        "Sick Animal Segregation": {"I know what is segregation of sick animals and how it will benefit my cattle": {"options": awareness_scale, "type": "radio"}, "I know segregation protocols and methods": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of segregating sick animals for cattle health and want to segregate sick animals from healthy cattle": {"options": agreement_scale, "type": "radio"}, "I have space available to segregate sick animals from healthy cattle": {"options": availability_scale, "type": "radio"}, "I have 100% access to space for segregating sick animals from healthy cattle": {"options": access_scale, "type": "radio"}, "I can afford segregation of sick animals from healthy animals for 100% of my cattle": {"options": affordability_scale, "type": "radio"}},
-        "New Cattle Introduction and Testing": {"I know what is testing of new cattle before introducing them into the herd and how it will benefit my cattle": {"options": awareness_scale, "type": "radio"}, "I know testing protocols and methods": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of testing new cattle before introducing them into the herd for cattle health and want to test new cattle": {"options": agreement_scale, "type": "radio"}, "I have 100% access to space for quarantine and testing new animals before introducing them into the herd": {"options": access_scale, "type": "radio"}, "I can afford quarantining and testing of new cattle before introducing them into the herd for 100% of my cattle": {"options": affordability_scale, "type": "radio"}, "I have 100% access to quarantine and test new cattle before introducing them in the herd in close proximity (doorstep/BMC/in village/ nearby villages) and quarantine and test my cattle accordingly": {"options": access_scale, "type": "radio"}},
-        "Feeding of Colostrum": {"I know what is feeding of colostrum to newborn calves and how it will benefit my cattle": {"options": awareness_scale, "type": "radio"}, "I know how feeding milk replacers to calf will benefit them": {"options": awareness_scale, "type": "radio"}, "I know protocols and methodology for feeding colustrum& Milk replacers to newborn calves": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of feeding colostrum & Milk replacers to new born calves and want to feed the newborn calves with milk replacers": {"options": agreement_scale, "type": "radio"}, "I have milk replacers available to use for calves": {"options": availability_scale, "type": "radio"}, "I have 100% access to Milk replacers (via DP/ Paravert at door step)": {"options": access_scale, "type": "radio"}, "I can afford feeding colostrum to 100% of the new born calves on my farm": {"options": affordability_scale, "type": "radio"}, "I feed colostrum in a timely manner as per prescribed norms, to 100% of the new born calves on my farm": {"options": access_scale, "type": "radio"}},
-        "Use of Herbal Remedies": {"I know what herbal remedies are and know how they will benefit my cattle": {"options": awareness_scale, "type": "radio"}, "I know herbal remedies for most common preventive diseases": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of herbal remedies for my cattle and want to use herbal remedies to prevent diseases for my cattle": {"options": agreement_scale, "type": "radio"}, "Herbal remedies are available to me (via home preparation/ herbal gardens in village/ nearby villages)": {"options": availability_scale, "type": "radio"}, "I have 100% access to herbal remedies (via herbal gardens, in villages, nearby villages, micro training centres etc)": {"options": access_scale, "type": "radio"}, "I can afford getting herbal raw materials/ ready to use herbal medicines and herbal remedies for 100% of my cattle": {"options": affordability_scale, "type": "radio"}, "I have timely access to herbal remedies and use it to prevent diseases that maybe harmful for 100% of my catle": {"options": access_scale, "type": "radio"}, "I have 100% access to herbal remedies in close proximity (doorstep/BMC/in village/ nearby villages) and use them to prevent diseases for my cattle": {"options": access_scale, "type": "radio"}},
-        "Post Dipping": {"I know what is post dipping and how it will benefit my cattle": {"options": awareness_scale, "type": "radio"}, "I know post dipping solution application methods/types (Spray/cups)": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of post-dipping to cattle health and want to perform post-dipping my cattle as per the prescribed norms": {"options": agreement_scale, "type": "radio"}, "I have dipping solution and dip cups available to me": {"options": availability_scale, "type": "radio"}, "I have 100% access to post-dipping solutions for my cattle (via veterinarians, para vets or government health camps etc)": {"options": access_scale, "type": "radio"}, "I can afford post-dipping chemicals for 100% of my cattle": {"options": affordability_scale, "type": "radio"}, "I have 100% timely access to post-dipping chemicals and apply them to my cattle according to the prescribed norms": {"options": access_scale, "type": "radio"}, "I have 100% access to post-dipping chemicals in close proximity (doorstep/BMC/in village/ nearby villages) and apply them to my cattle according to the prescribed norms": {"options": access_scale, "type": "radio"}},
-        "Assessing Healthy and Sick Animals (Body Scoring)": {"I know what is body scoring and how it will benefit my cattle": {"options": awareness_scale, "type": "radio"}, "I know assessing of healthy and sick animals for 5 criteria based on body scoring": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of body scoring to cattle health and want to perform body scoring my cattle as per the prescribed norms": {"options": agreement_scale, "type": "radio"}},
-        "Mastitis Testing and Prevention": {"I know what is mastitis and how its testing and prevention will benefit my cattle's health": {"options": awareness_scale, "type": "radio"}, "I know the symptoms of mastitis and its prevention using California Mastitis Test (CMT) results": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of the California Mastitis Test (CMT) to cattle health and want to perform California Mastitis Test (CMT) for my cattle as per the prescribed norms": {"options": agreement_scale, "type": "radio"}, "I have CMT solution available to me": {"options": availability_scale, "type": "radio"}, "I have 100% access to post-dipping solutions for my cattle (via veterinarians, para vets or government health camps etc)": {"options": access_scale, "type": "radio"}, "I can afford California Mastitis Test (CMT) chemicals for 100% of my cattle": {"options": affordability_scale, "type": "radio"}, "I have 100% timely access to California Mastitis Test (CMT) chemicals and perform California Mastitis Test (CMT) to my cattle according to the prescribed norms": {"options": access_scale, "type": "radio"}, "I have 100% access to California Mastitis Test (CMT) chemicals in close proximity (doorstep/BMC/ in village/ nearby villages) and apply them to my cattle according to the prescribed norms": {"options": access_scale, "type": "radio"}},
-        "Access to Diagnostic Services": {"I know what diagnostic services are and how it will benefit my cattle's health": {"options": awareness_scale, "type": "radio"}, "I know the actions to be taken up immediately post-diagnosis like getting in touch with a Veterinarian and starting appropriate treatment protocol, taking the animal to a diagnostic facility etc": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of diagnostic facilities to cattle health and want to access diagnostic services for my cattle": {"options": agreement_scale, "type": "radio"}, "I have 100% access to diagnostic services for my cattle (via veterinarians, para vets or government health camps etc)": {"options": access_scale, "type": "radio"}, "I can afford diagnostic services for 100% of my cattle": {"options": affordability_scale, "type": "radio"}, "I have 100% timely access to diagnostic facilities": {"options": access_scale, "type": "radio"}, "I have 100% access to diagnostic facilities in close proximity (doorstep/BMC/ in village/ nearby villages)": {"options": access_scale, "type": "radio"}},
-        "Veterinarian Services": {"I know what are veterinary services and how they will benefit my cattle's health": {"options": awareness_scale, "type": "radio"}, "I know what the services provided by para-vet and qualified veterinary doctor": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of veterinary services to cattle health and want to access veterinary services for my cattle": {"options": agreement_scale, "type": "radio"}, "Doorstep services and Veterinary Hospitals are available": {"options": availability_scale, "type": "radio"}, "I have 100% access to veterinary services for my cattle (via veterinarians, para vets or government health camps etc)": {"options": access_scale, "type": "radio"}, "I can afford veterinary services for 100% of my cattle": {"options": affordability_scale, "type": "radio"}, "I have 100% timely access to veterinary services": {"options": access_scale, "type": "radio"}, "I have 100% access to veterinary services in close proximity (doorstep/BMC/ in village/ nearby villages)": {"options": access_scale, "type": "radio"}},
-        "Accessibility to medicines": {"I know what medicines are and how it will benefit my cattle's health": {"options": awareness_scale, "type": "radio"}, "I know the standardized treatment protocols and medicines to be used to treat the general diseases (Fever, cough/respiratory problems, lameness etc.)": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of high-quality medicines to cattle health and want to access high-quality medicines for my cattle": {"options": agreement_scale, "type": "radio"}, "I have 100% access to high-quality medicines for my cattle (via veterinarians, para vets or government health camps etc)": {"options": access_scale, "type": "radio"}, "I can afford high-quality medicines for 100% of my cattle": {"options": affordability_scale, "type": "radio"}, "I have 100% timely access to high-quality medicines": {"options": access_scale, "type": "radio"}, "I have 100% access to high-quality medicines in close proximity (doorstep/BMC/ in village/ nearby villages)": {"options": access_scale, "type": "radio"}},
-        "Isolation of sick animals": {"I know what is isolation of sick animals and how it will benefit my cattle": {"options": awareness_scale, "type": "radio"}, "I know isolation protocols and methods": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of isolating sick animals for cattle health and want to isolate sick animals from healthy cattle": {"options": agreement_scale, "type": "radio"}, "There is space available for me to isolate my sick animals from healthy cattle": {"options": availability_scale, "type": "radio"}, "I have 100% access to space for isolating sick animals from healthy cattle": {"options": access_scale, "type": "radio"}, "I can afford isolation of sick animals from healthy animals for 100% of my cattle": {"options": affordability_scale, "type": "radio"}},
-        "Ethno veterinary medicine (RTU (Ready To Use) EVM)": {"I know what RTU EVM are and know how they will benefit my cattle": {"options": awareness_scale, "type": "radio"}, "I know RTU EVM for most common diseases": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of RTU EVM for my cattle and want to use RTU EVM to cure diseases for my cattle": {"options": agreement_scale, "type": "radio"}, "Herbal remedies are available to me (via home preparation/ herbal gardens in village/ nearby villages)": {"options": availability_scale, "type": "radio"}, "I have 100% access to RTU EVM (via herbal gardens, in villages, nearby villages, micro training centers etc)": {"options": access_scale, "type": "radio"}, "I can afford to get RTU EVM for 100% of my cattle": {"options": affordability_scale, "type": "radio"}, "I have timely access to RTU EVM and use them to cure diseases for 100% of my cattle": {"options": access_scale, "type": "radio"}, "I have 100% access to RTU EVM in close proximity (doorstep/BMC/in village/ nearby villages) and use them to cure diseases for my cattle": {"options": access_scale, "type": "radio"}},
-    },
-    "Cattle Breeding": {
-        "Cattle Breed and Identification": {"I know how to identify different cattle breeds": {"options": awareness_scale, "type": "radio"}, "I know that different cattle breeds' production capacities, diseases resistance, and which breed is suitable for my locality": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of different cattle breeds and want to introduce new cattle in the herd": {"options": agreement_scale, "type": "radio"}, "There are various types of breeds available in my area to procure": {"options": availability_scale, "type": "radio"}, "I have 100% access to new cattle breeds (via veterinarians, para vets, government cattle schemes or DP team etc)": {"options": access_scale, "type": "radio"}, "I can afford new cattle breed introduction and its management in the herd": {"options": affordability_scale, "type": "radio"}},
-        "Disease Prevention": {"I know what difficulties are faced by cattle during calving and how they will affect my cattle": {"options": awareness_scale, "type": "radio"}, "I know difficulties are faced by cattle during calving, and whom to approach for preventing": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of preventing difficulties faced by cattle during calving and want to vaccinate my cattle as per prescribed schedule": {"options": agreement_scale, "type": "radio"}, "I have 100% access to prevent/treat difficulties faced by cattle during calving for my cattle (via veterinarians, para vets or government health camps etc)": {"options": access_scale, "type": "radio"}, "I can afford to prevent difficulties are faced by cattle during calving for 100% of my cattle": {"options": affordability_scale, "type": "radio"}},
-        "Reproductive Management Practices": {"I know what reproductive management practices and how it will benefit my cattle's production": {"options": awareness_scale, "type": "radio"}, "I know how to maintain a successful reproductive cycle of my cattle": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of reproductive management to cattle production and want to access in all aspects like veterinary support, feed, health for my cattle": {"options": agreement_scale, "type": "radio"}, "I have 100% access to veterinary support in reproductive management for my cattle (via veterinarians, para vets or government health camps, etc) and feed": {"options": access_scale, "type": "radio"}, "I can afford high quality feed, health care services, breeding services for 100% of my cattle": {"options": affordability_scale, "type": "radio"}, "I have 100% timely access to quality feed and veterinary support": {"options": access_scale, "type": "radio"}, "I have 100% access to quality feed and veterinary support in close proximity (doorstep/ BMC/ in village/nearby villages)": {"options": access_scale, "type": "radio"}},
-        "Infertility": {"I know what is cattle infertility and know how it will affect my cattle production": {"options": awareness_scale, "type": "radio"}, "I know infertility treatments and measures to improve the fertility of cattle": {"options": knowledge_scale, "type": "radio"}, "Herbal Remedies are available to me for infertility treatment": {"options": availability_scale, "type": "radio"}, "I have 100% access to treat infertility for my cattle (via veterinarians, para vets or government health camps, dairy partner team etc)": {"options": access_scale, "type": "radio"}, "I can afford infertility treatment for 100% of my cattle": {"options": affordability_scale, "type": "radio"}, "I have 100% timely access to treatment and treat my cattle according to prescribed norms": {"options": access_scale, "type": "radio"}, "I have 100% access to treatment in close proximity (doorstep/BMC/in village/ nearby villages)": {"options": access_scale, "type": "radio"}},
-        "Artificial Insemination Services": {"I know what are Al services and how they will benefit my cattle's production": {"options": awareness_scale, "type": "radio"}, "I know which type of AI straws are available as per breeding policy": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of credible semen sources and high-quality AI services to cattle production and want to access credible semen sources and high quality AI services for my cattle": {"options": agreement_scale, "type": "radio"}, "I have 100% access to credible semen sources and high-quality AI services for my cattle (via veterinarians, para vets or government health camps, etc)": {"options": access_scale, "type": "radio"}, "I can afford credible semen and high-quality AI services for 100% of my cattle": {"options": affordability_scale, "type": "radio"}, "I have 100% timely access to credible semen source and high quality Al services": {"options": access_scale, "type": "radio"}, "I have 100% access to credible semen sources and high quality AI services in close proximity (doorstep/BMC/ in village/ nearby villages)": {"options": access_scale, "type": "radio"}},
-        "Pregnancy Management": {"I know what pregnancy management is and how it will benefit my cattle's production": {"options": awareness_scale, "type": "radio"}, "I know caring for Pregnant animal by providing proper nutrition, health, stress-free environment and have reach out to Veterinarian for suggestions": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of pregnancy management to cattle production and want to access in all aspects like veterinary support, feed, health for my cattle": {"options": agreement_scale, "type": "radio"}, "I have 100% access to veterinary support in pregnancy support for my cattle (via veterinarians, para vets or government health camps, etc) and feed": {"options": access_scale, "type": "radio"}, "I can afford high quality feed/ ration for 100% of my cattle": {"options": affordability_scale, "type": "radio"}, "I have 100% timely access to quality feed and veterinary support": {"options": access_scale, "type": "radio"}, "I have 100% access to quality feed and veterinary support in close proximity (doorstep/ BMC/ in village/ nearby villages)": {"options": access_scale, "type": "radio"}},
-    },
-    "Women Empowerment": {
-        "Community Gender Sensitization": {"I know about the role of women in dairy farming and how they contribute to the dairy sector": {"options": awareness_scale, "type": "radio"}, "I know about gender roles in society and the importance of the role of women in dairy farming": {"options": knowledge_scale, "type": "radio"}, "I am sensitized to gender roles and role of women in dairy farming and recognize their importance and want to empower them": {"options": agreement_scale, "type": "radio"}, "I have access to resources to gain information and opportunity to learn about gender sensitivity": {"options": access_scale, "type": "radio"}},
-        "Know-how of dairy economics": {"I know what are dairy practices and dairy economics and why women's knowledge and contribution is important": {"options": awareness_scale, "type": "radio"}, "I know best dairy practices, understand dairy economics and I am financially included": {"options": knowledge_scale, "type": "radio"}, "I know dairy practices and dairy economics and want to be actively included and build my knowledge and self- efficacy": {"options": agreement_scale, "type": "radio"}, "I have access to resources and opportunity to learn and practice dairy practices and dairy economics": {"options": access_scale, "type": "radio"}},
-        "Status of Women Leadership": {"I know what is women leadership and how it benefits the development of women": {"options": awareness_scale, "type": "radio"}, "I know women's leadership awareness camps, training programs, leadership development programs": {"options": knowledge_scale, "type": "radio"}, "I know about leadership awareness camps, training programs, leadership development programs etc and I want to actively participate in them": {"options": agreement_scale, "type": "radio"}, "I have access to leadership awareness camps, training programs, leadership development programs (via government programs/ BMC camps/NGO workshops) etc": {"options": access_scale, "type": "radio"}, "I have access leadership awareness programs, camps, training programs, leadership development programs in close proximity (BMC/micro training centres/villages/ nearby villages)": {"options": access_scale, "type": "radio"}},
-        "Capability building of women": {"I know what are capability building workshops, seminars and training and how they will benefit women farmer's development": {"options": awareness_scale, "type": "radio"}, "I know skill development and dairy entrepreneurship focused workshops, seminars and training programmes in my vicinity": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of participating in skill development and dairy entrepreneurship workshops, training programs and development programs on women development and want to actively participate in them": {"options": agreement_scale, "type": "radio"}, "I have access to skill development and dairy entrepreneurship workshops, training programs and development program (via government programs/ BMC camps/NGO workshops) etc": {"options": access_scale, "type": "radio"}, "I have access to skill development and dairy entrepreneurship workshops, training programs and development program in close proximity (BMC/micro training centres/villages/ nearby villages)": {"options": access_scale, "type": "radio"}},
-        "Status of promotion of innovation": {"I know what is meant by innovations and how they can benefit dairy business as well as empower women": {"options": awareness_scale, "type": "radio"}, "I know about innovative methods used in dairy and farm businesses globally": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of innovating in dairy and farm businesses and want to build my knowledge and innovate better ways of doing dairy and farm business": {"options": agreement_scale, "type": "radio"}, "I have access to resources to get exposed to global innovations in dairy and farm businesses": {"options": access_scale, "type": "radio"}},
-        "Community Groups": {"I know what are SHG and JLG groups and how they empower women dairy farmers": {"options": awareness_scale, "type": "radio"}, "I know how being part of SHGs/JLGs will help me supply milk and facilitate with credit linkages to improve my dairy farm": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of being a part of SHG and JLG groups and want to be a part of these groups": {"options": agreement_scale, "type": "radio"}, "I have access to SHG and JLG groups and participate in them": {"options": access_scale, "type": "radio"}, "I have access to SHG and JLG groups in close proximity (BMC/ micro training centres/villages/ nearby villages)": {"options": access_scale, "type": "radio"}},
-        "Farm Practices": {"I know what are dairy farming practices and how participating in them can empower women": {"options": awareness_scale, "type": "radio"}, "I know about the various labour, business and financial aspects of dairy farming": {"options": knowledge_scale, "type": "radio"}, "I know about the various labour, business and financial aspects of dairy farming and want to actively participate in them": {"options": agreement_scale, "type": "radio"}, "I have access to resources and opportunity to learn and participate in the labour, business, and financial aspects of dairy farming": {"options": access_scale, "type": "radio"}},
-    },
-    "Farmer Participation Questionnaire": {
-        "1. Who regularly performs daily activities on your dairy farm? (Multiple Choices Possible)": {
-            "type": "multiselect_list",
-            "options": person_responsible_options,
-            "list": ["Cleaning animals", "Cleaning farm shed", "Cleaning farm and feeding equipment", "Cleaning dairy farm", "Feeding", "Making hay and silage", "Fetching water for cleaning", "Fetching water for drinking", "Milking (in the morning)", "Milking (in the afternoon)", "Milking (in the evening)", "Delivery of Milk Cans to BMCS"]
+# --- Data Loading ---
+@st.cache_data
+def get_questions():
+    """
+    Loads the entire survey questions dictionary.
+    """
+    return {
+        "Respondent and Location Details": {
+            "Name of the Dairy Partner": ["Parag", "Sunfresh Lactalis", "Govind", "Schreiber"],
+            "Name of the respondent": None,
+            "Respondent Email ID": None,
+            "Respondent Contact Number": None,
+            "Designation": ["Route Incharge", "Facilitator", "Manager", "Supervisor", "Entrepreneur", "Other"],
+            "Department": ["Procurement", "Dairy Extension", "Quality", "Other"],
+            "Milk chilling and collection center": ["BMC", "MCC"],
+            "BMC/ MCC Name": None,
+            "BMC/ MCC code": None,
+            "Route Number": None,
+            "Route Details": None,
+            "Location (Village, Taluka, District)": None,
+            "Date of response": None,
+            # These fields are handled in the consent step but kept here for structure
+            "Consent to fill the form": ["Yes", "No"],
+            "Signature of the respondent": None,
+            "Reviewed and confirmed by Route Incharge": ["Yes", "No"],
+            "Signature of Route In charge": None,
+            "Reviewed and confirmed by Ksheersagar SPOC": ["Yes", "No"],
+            "Signature of SPOC": None,
         },
-        "2. Who performs activities on your dairy farm? (Multiple Choices Possible)": {
-            "type": "multiselect_list",
-            "options": person_responsible_options,
-            "list": ["Segregation of sick animals", "Isolation of sick animals", "Taking cows to veterinarian/arranging for veterinarian appointments", "Farm Maintenance", "Dipping", "Handling dairy economics/ finances", "Marketing"]
+        "1. Animal Care": {
+            "1.1 Cattle Health": {
+                "1.1.1 Preventive Care": {
+                    "1.1.1.1 Vaccination, deworming, tick control and preventive checks ups": ["a. 100% of dairy farmers are aware and have sufficient knowledge of recommended vaccinations (6), deworming, and tick control schedules", "b. 100% of dairy farmers can access vaccines (3) and as per vaccination services provided by government and/ or private, deworming and tick medicines, and preventive checkups timely as per recommended schedule", "c. Timely doorstep services ensured for all cattle for vaccinations (3), deworming, tick and preventive checkups as per recommended schedule at an affordable price", "d. Timely affordable doorstep services ensured for all cattle for vaccinations (6), deworming, and preventive checkups as per recommended schedule.", "e. 100% cattle vaccinated (8 recommended vaccines, stock as provided by government from time to time), dewormed, checked periodically based on prescribed schedule customized to different physiological stages of the cattle cycle", "f. None of the above", "g. Not aware"],
+                    "1.1.1.2 Documentation and maintenance of records": ["a. Written records of all cattle and their treatments are maintained and available for further investigation by 40% of farmers", "b. Written records of all cattle and their treatments are maintained and available for further investigation by 60% of farmers", "c. Written records of all cattle and their treatments are maintained and available for further investigation by 80% of farmers", "d. Written records of all cattle and their treatments are maintained and available for further investigation by 100% of dairy farmers", "e. Digital records of all cattle and their treatments are maintained and available for further investigation for all dairy farmers", "f. None of the above", "g. Not aware"],
+                    "1.1.1.3 Sick animal segregation": ["a. Segregation of healthy cattle from the sick is practiced by 60% of dairy farmers", "b. Segregation of healthy cattle from the sick is practiced by 80% of dairy farmers", "c. Segregation of healthy cattle from the sick is practiced by 100% farmers and a designated space available for segregation", "d. Segregation of 100% of sick animals is practiced", "e. Segregation of healthy cattle from the 100% sick animals is practiced by 100% dairy farmers", "f. None of the above", "g. Not aware"],
+                    "1.1.1.4 New cattle introduction and testing": ["a. 100% of dairy farmers are aware and have preliminary knowledge of the criteria for selection of healthy animal/s before introducing them into the herd", "b. Health status of animals sourced is known to 100% of dairy farmers", "c. Health status of animals sourced is known to 100% of dairy farmers and their introduction is controlled into the herd through quarantine. Testing of these animals at an affordable price is ensured.", "d. Health status of animals sourced is known to 100% of dairy farmers through testing that is available at an affordable price and 100% of cattle introduced are quarantined.", "e. Health status of 100% animals sourced is known through in house testing infrastructure and their introduction into the herd is 100% controlled through quarantine", "f. None of the above", "g. Not aware"],
+                    "1.1.1.5 Feeding of colostrum": ["a. Colostrum fed to newborn calves by 100% dairy farmers", "b. Colostrum fed to newborn calves for 3 days by 100% of dairy farmers", "c. Colostrum fed at least 2 LPD of fresh colostrum over 3 days to newborn calves by 100% of dairy farmers", "d. Colostrum fed to newborn calves (2 L in first 2 hours and 1-2 LPD for next 2-3 days) by all dairy farmers", "e. Colostrum fed to newborn calves (2 L in first 2 hours and 2 LPD of fresh colostrum in a day over 3-4 times for next 5-7 days)", "f. None of the above", "g. Not aware"],
+                    "1.1.1.6 Use of herbal remedies": ["a. 100 % of dairy farmers are aware of Herbal remedies for most common preventive diseases", "b. Herbal remedies are adopted and practiced by 100% of dairy farmers", "c. Herbal raw materials or ready to use herbal medicines are made easily available and herbal remedies are practiced by 100% dairy farmers", "d. Herbal remedies are adopted and practiced on 100% cattle with highest level of self-efficacy and diseases are prevented.", "e. Herbal gardens are promoted widely and herbal remedies and ready to use medicines are easily accessible to 100% of dairy farmers who are practicing herbal remedies on regular", "f. None of the above", "g. Not aware"],
+                    "1.1.1.7 Hazard and contamination": ["a. 100% of dairy farmers are aware and have knowledge of potential hazards caused by bio contaminants", "b. 100% of dairy farmers monitor farms from potential hazards and secure boundaries from adjoining neighbors", "c. 100% of dairy farmers are aware and have knowledge of inter-herd and intra- herd practices to reduce bio contamination", "d. Biosecurity is enhanced and bio contamination reduced through the adoption of inter-herd and intra-herd practice by 80% dairy farmers", "e. Biosecurity is enhanced and bio contamination reduced through the adoption of inter-herd and intra-herd practice by 100% dairy farmers", "f. None of the above", "g. Not aware"],
+                    "1.1.1.8 Post dipping": ["a. 100% of dairy farmers are aware of post dipping with prescribed chemicals to prevent mastitis", "b. 100% of dairy farmers are adopting post dipping with prescribed dosages of chemicals to prevent mastitis", "c. 100% of dairy farmers are having access to chemicals for post dipping and are adopting on 100% of their milch cattle", "d. 100% of dairy farmers have access to chemicals for post dipping at an affordable price at their doorstep and practice post dipping on 100% of their cattle immediate post milking", "e. Post dipping done mandatorily as practice on 100% of cattle in herd immediately post milking using globally approved prescribed chemicals", "f. None of the above", "g. Not aware"]
+                },
+                "1.1.2 Disease Diagnosis": {
+                    "1.1.2.1 Body scoring (assessing healthy and sick animals)": ["a. 100 % of dairy farmers are aware and have sufficient knowledge of body scoring i.e. assessing healthy (for at least 5 criteria) and sick animals (at least 5 parameters). 60 % of dairy farmers apply body scoring knowledge as part of the daily animal care regime", "b. 100% of dairy farmers are aware and have sufficient knowledge of body scoring i.e. assessing healthy (at least 8 criteria) and sick animals (at least 20 parameters). 80% dairy farmers apply body scoring knowledge as part of the daily animal care regime", "c. 100% dairy farmers do body scoring of all animals as part of the daily animal care regime and 80% of dairy farmers segregate healthy animals from diseased", "d. 100% dairy farmers do body scoring of 100% of animals as part of the daily animal care regime", "e. Body Scoring of 100% cattle done based on a prescribed checklist which is used periodically to assess signs of healthy animals (13 criteria) and signs of disease (20 parameters)", "f. None of the above", "g. Not aware"],
+                    "1.1.2.2 Mastitis testing and prevention": ["a. 60 % of dairy farmers are aware of symptoms of mastitis and care to be taken to contain this disease at the individual animal level", "b. 60% dairy farmers have an ability to diagnose early stage of mastitis and the 40% of larger farms (herd size > 10) perform the California Mastitis Test (CMT)", "c. 100% dairy farmers can diagnose mastitis and the of them 80% of large farms (herd size>10) perform the California Mastitis Test (CMT)", "d. 100% large dairy farmers (herd size >10) have access to affordable testing of CMT across all cattle on a day to day basis", "e. California Mastitis Test (CMT) done for 100% cattle for 100% milk produced every day", "f. None of the above", "g. Not aware"],
+                    "1.1.2.3 Access to diagnostic services": ["a. 40% of dairy farmers are aware of actions to be taken up immediately post-diagnosis like getting in touch with a Veterinarian and starting appropriate treatment protocol, taking the animal to a diagnostic facility etc.", "b. 60% dairy farmers can access timely and affordable diagnostic facilities and services for further disease diagnosis and commence appropriate treatment protocol", "c. 100% dairy farmers can access timely and affordable doorstep diagnostic facilities and services for further disease diagnosis and commence appropriate treatment protocol", "d. 100% dairy farmers can access timely and affordable doorstep (mobile) diagnostic facilities and services for further disease diagnosis and are timely advised on the appropriate treatment protocol. Government programs and budgets are leveraged to strengthen these services", "e. In-house diagnostic facilities and services available to diagnose further and to commence appropriate treatment protocol immediately for 100% cattle", "f. None of the above", "g. Not aware"]
+                },
+                "1.1.3 Disease Treatment": {
+                    "1.1.3.1 Veterinarian services": ["a. Veterinarian or paravet service on call available to treat 80% of sick animal’s post disease diagnosis", "b. Veterinarian parapet service available at the village level to treat 100% sick animals immediately post disease diagnosis", "c. Affordable and timely veterinarian services available doorstep to treat 100% sick animals immediately post", "d. Affordable and timely dedicated veterinarian services available at the doorstep to treat 100% sick cattle", "e. In-house dedicated veterinarian or team of veterinarians treat 100% of sick animals immediately post disease diagnosis", "f. None of the above", "g. Not aware"],
+                    "1.1.3.2 Treatment protocols": ["a. 100% of dairy farmers are aware of standardized investigation forms and treatment protocols at farm level", "b. Standardized investigation forms and written treatment protocols are available at farm level with 80% of dairy farmers", "c. Standardized investigation forms and written treatment protocols ensured for the 80% of sick animals", "d. Standardized investigation forms and digitized treatment protocols are ensured for 100% sick animals", "e. Centralized investigation forms and digitized treatment protocols are ensured for 100% sick animals.", "f. None of the above", "g. Not aware"],
+                    "1.1.3.3 Accessibility to Medicines": ["a. 100% of dairy farmers are aware of standardized treatment protocols and medicines to be used to treat the critical and important diseases", "b. 80% dairy farmers have access to affordable high quality medicines and they treat sick animals with the prescribed dosage", "c. 100% of dairy farmers have access to affordable high-quality medicines at their doorstep and they treat 100% sick animals with prescribed dosages", "d. 100% dairy farmers have access to affordable and high-quality medicines at their doorstep and they treat 100% sick animals with prescribed dosages linked to their growth stage", "e. Best in class treatment provided to all sick animals in line with prescribed disease treatment protocols (balanced nutrition, stress management)", "f. None of the above", "g. Not aware"],
+                    "1.1.3.4 Isolation of sick animals": ["a. 100% dairy farmers have awareness and knowledge regarding isolation of sick animals to prevent disease and fast-track treatment of sick animals.60% of farmers practice isolation of 50% of sick animals from healthy animals immediately post diagnosis of disease", "b. 80% dairy farmers practice isolation of 50% of sick animals from healthy animals immediately post diagnosis of disease and for the entire duration of treatment", "c. 100% of dairy farmers practice isolation of 100% of sick animals from healthy animals immediately post diagnosis of disease and for the entire duration of treatment", "d. 100% of dairy farmers practice isolation of 100% of sick animals from healthy animals immediately post diagnosis of disease and for the entire duration of treatment", "e. Provision for immediate Isolation of 100% of sick animals in a designated shed that are designed for better care and recovery of animals", "f. None of the above", "g. Not aware"],
+                    "1.1.3.5 Knowledge of pharmacological data and requirements": ["a. Paraveterinarian have acceptable knowledge of requirements associated with antimicrobial use, permitable residual levels", "b. Practicing Paraveterinarian have adequate knowledge of requirements associated with antimicrobial use, permitable residual levels", "c. Practicing veterinarians understanding of pharmacological data and requirements associated with antimicrobial use, permitable residual levels", "d. Practicing Paraveterinarian or veterinarians have thorough knowledge of pharmacological data and requirements associated with antimicrobial use, permitable residual levels", "e. Practicing paraveterinarians or Veterinarians have expertise and a deep understanding of pharmacological data and requirements associated with antimicrobial use, permitable residual levels", "f. None of the above", "g. Not aware"],
+                    "1.1.3.6 Herbal Remedies": ["a. 80% of dairy farmers have awareness and having knowledge of herbal remedies and are treating at least 5 diseases using herbal remedies", "b. 80% dairy farmers are treating at least 10 diseases using herbal remedies and source raw materials from their farm or a nearby herbal garden or same village", "c. 80% of dairy farmers have the ability to treat at least 15 diseases using herbal remedies and source raw materials in their village or from a nearby herbal garden from same village", "d. 100% farmers have the ability to treat at least 15 diseases using herbal remedies and grow raw materials on their farm or have access to raw materials in the same village", "e. 100% farmers have the ability to treat at least 20 diseases using herbal remedies and grow raw materials on their farm", "f. None of the above", "g. Not aware"],
+                    "1.1.3.7 Ethno veterinary medicine": ["a. 100% of dairy farmers are aware and have knowledge of ready to use EVM Medicines", "b. 80% of dairy farmers have access to ready to use EVM Medicines and herbal gardens", "c. 100% of dairy farmers have access to ready to use EVM Medicines and herbal gardens", "d. 100% of dairy farmers have access to ready to use EVM Medicines at an affordable price. Government programs and budgets are leveraged to strengthen these services", "e. 100% of the herd is provided with ready to use EVM medicines, when it is required", "f. None of the above", "g. Not aware"],
+                    "1.1.3.8 Antibiotic withdrawal chart": ["a. 100% of dairy farmers are aware and having knowledge of antibiotic withdrawal limits and timelines", "b. 100% of dairy farmers have a chart in their dairy shed depicting all antibiotics and their withdrawal limits", "c. 100% of dairy farmers have a chart and use the same to assess antibiotic withdrawal limit and to decide on pouring milk in the collection centre", "d. 100% of dairy farmers are supplying milk after considering the antibiotic withdrawal limits for 100% of milch cattle all through the year", "e. 100% of Milking and supply of milk is linked to antibiotic withdrawal limits to 100% of cattle", "f. None of the above", "g. Not aware"],
+                }
+            },
+            "1.2 Nutrition": {
+                "1.2.1 Cattle Feed and Fodder": {
+                    "1.2.1.1 Ration balancing of cattle": ["a. 60% of the dairy farmers are aware and have sufficient knowledge of Ration balancing of cattle based on their needs (growth/maintenance/milk production) and physiological stage", "b. 80% of dairy farmers provide ration balanced feed to all cattle based on their stage and need", "c. 100% dairy farmers provide ration balanced feed to all cattle based on their stage and need", "d. 100% dairy farmers provide ration balanced feed to all cattle based on their stage and need", "e. 100% of herd provided with ration balanced feed based on their physiological stage and linked to the specific need", "f. None of the above", "g. Not aware"],
+                    "1.2.1.2 Access to clean drinking water": ["a. 100% of dairy farmers are aware of the need to provide unlimited water to the cattle throughout the day", "b. 60% of dairy farmers are able to provide clean drinking water throughout the day", "c. 80% of dairy farmers have made provision to provide clean drinking water through the day", "d. 100% dairy farmers provide unlimited water to the cattle throughout the day", "e. 100% of the herd provided with clean drinking water ad. libitum that is tested periodically and adheres to prescribed standards", "f. None of the above", "g. Not aware"],
+                    "1.2.1.3 Access to quality and palatable feed": ["a. 100% of farmers are aware of the importance of quality and palatable feed and nutrient requirements during extreme climate events and 40% of farmers are providing quality and palatable feed", "b. 60% of dairy farmers are able to timely access quality and palatable feed at village level", "c. 80% dairy farmers can access affordable, high quality and palatable feed on the doorstep", "d. 100% farmers can access affordable, high quality and palatable feed on the doorstep", "e. 100% herd is provided with best in class feed based on their physiological stage (calf, heifer, adult cow) linked to their specific need", "f. None of the above", "g. Not aware"],
+                    "1.2.1.4 Knowledge of alternate feeds and their access": ["a. 100% of dairy farmers are aware and have knowledge of the provision of alternative feeds customized to climate extremes", "b. 60% of dairy farmers provide alternative feeds customized to climate extremes", "c. 80% dairy farmers can access affordable alternative feeds customized to climate extremes", "d. 100% dairy farmers can access affordable alternative feeds customized to climate extremes. Government programs and budgets are leveraged to strengthen these services", "e. 100% herd is provided with nutrient enhanced alternative feeds customized to climate extremes", "f. None of the above", "g. Not aware"],
+                    "1.2.1.5 Green fodder and carbon sequestration": ["a. 80% of dairy farmers are aware and have knowledge of green fodder like Moringa and its benefits to carbon sequestration", "b. 100% of dairy farmers are aware and have knowledge about carbon sequestration and quality seeds to grow green fodder having benefits of carbon sequestration. 60% of dairy farmers have access to high quality seeds.", "c. 60% of dairy farmers have access to high quality seeds of Moringa. 60% of dairy farmers follow green fodder cultivation practices timely according to recommended agricultural practices", "d. 80% of dairy farmers follow green fodder cultivation practices timely according to recommended agricultural practices. They have Moringa plantations for high quality all year round green fodder", "e. 100% of dairy farms practice best in class green fodder (Moringa, etc) production practices according to recommended agricultural practices", "f. None of the above", "g. Not aware"],
+                    "1.2.1.6 Soil management practices": ["a. 80% of dairy farmers are aware and have knowledge of soil sampling and testing", "b. 100% of dairy farmers are aware and have knowledge of soil sampling and testing. 40% of dairy farmers conduct soil sampling and testing for high quality growth rates and healthy fodder.", "c. 60% of dairy farmers conduct soil sampling and testing for high quality growth rates and healthy fodder. 80% of dairy farmers apply fertilizers based on the soil testing information to improve the soil health.", "d. 80% of dairy farmers apply fertilizers based on the soil testing information to improve soil health. They practice soil management practices to reduce soil plugging, erosion and compaction.", "e. 100% of dairy farms apply fertilizers to improve soil health. They practice soil management practices to reduce soil plugging, erosion and compaction.", "f. None of the above", "g. Not aware"]
+                },
+                "1.2.2 Cattle Feed Management": {
+                    "1.2.2.1 Segregation of feed and equipment’s": ["a. 100% of dairy farmers are aware of the importance of segregation of feed and chemical handling equipment", "b. 60% of dairy farmers adopt segregation of feed and chemical handling equipment", "c. 80% dairy farmers segregate feed and chemicals handling equipment.", "d. 100% dairy farmers segregate feed, milking, and chemical handling equipment’s", "e. 100% equipment’s and tools are segregated from feed in the dairy farm and 100% disinfected/ sanitized to avoid any contamination with feed", "f. None of the above", "g. Not aware"],
+                    "1.2.2.2 Feed protection and discarding": ["a. 60% of dairy farmers are aware and protect feed to reduce spoilage or contamination. 60% of dairy farmers discard the feed parts found with moulds or other contaminants immediately", "b. 80% of dairy farmers are aware and protect feed to reduce spoilage or contamination. 80% of dairy farmers discard the feed parts found with moulds or other contaminants immediately", "c. 100% dairy farmers are aware to protect feed to reduce spoilage or contamination. 100% of dairy farmers discard the feed parts found with moulds or other contaminants immediately.", "d. 100% dairy farmers have provision to protect feed and ensure feed spoilage or contamination. 100% dairy farmers immediately discard the feed with moulds /contaminants as per prescribed standards", "e. 100% feed properly packed and well protected from physical and chemical damages. 100% moulded and contaminated Feed immediately discarded as per prescribed safe disposal standards.", "f. None of the above", "g. Not aware"],
+                    "1.2.2.3 Documentation and record keeping": ["a. 100% of dairy farmers are aware of documentation and record keeping .40% of dairy farmers maintain written records for cattle feed, ration, and nutrition", "b. 60% of dairy farmers maintain written records for cattle feed, ration, and nutrition", "c. 80% of dairy farmers maintain written records for cattle feed, ration, and nutrition", "d. 100% dairy farmers access and maintain digital records for cattle feed, ration, and nutrition", "e. 100% digital records maintained for feed, ration, and nutrition details of entire herd", "f. None of the above", "g. Not aware"],
+                    "1.2.2.4 Testing of water and feed": ["a. 100% of people in the village are aware and have knowledge of testing water and feed as per prescribed norms", "b. 60% of dairy farmers test the water regularly as per prescribed norms to avoid health problems", "c. 80% of dairy farmers test the water regularly as per prescribed norms to avoid health problems", "d. 100% of dairy farmers in milk shed test the water regularly as per prescribed norms", "e. 100% Water and feed tested regularly as per prescribed norms", "f. None of the above", "g. Not aware"],
+                    "1.2.2.5 Knowledge of and access to quality hay and silage": ["a. 100% of dairy farmers have awareness of best harvesting techniques for fodder cutting and making hay and silage. 40% of dairy farmers adopt fodder cutting and make good quality hay & silage.", "b. 60% of dairy farmers adopt the best harvesting techniques for fodder cutting and make good quality hay & silage.", "c. 80% of dairy farmers adopt the best harvesting techniques for fodder cutting and make good quality hay & silage.", "d. 100% dairy farmers adopt the best harvesting techniques for fodder cutting and make good quality hay & silage.", "e. Best quality hay & silage produced and maintained on the farm all through the year", "f. None of the above", "g. Not aware"],
+                    "1.2.2.6 Usage of toxin binder in cattle feed": ["a. 100% dairy farmers have awareness and knowledge of toxin binder in feed to reduce aflatoxins", "b. 100% dairy farmers provide feed with toxin binder as per prescribed standards (0.5%, 50g/animal per day)", "c. 100% of dairy farmers have timely access to affordable feed with toxin binder as per prescribed standards", "d. 100% of dairy farmers have timely doorstep access to feed with toxin binder in prescribed dosages", "e. All feed provided to the cattle in herd have toxin binders in prescribed dosages as recommended globally (10 grams of toxin binder per kg)", "f. None of the above", "g. Not aware"],
+                    "1.2.2.7 Availability of compliant cattle feed": ["a. 100% dairy farmers are aware about compliant cattle feed.", "b. 50% dairy farmers have access to compliant cattle feed.", "c. 65% dairy farmers have access to compliant cattle feed.", "d. 75% dairy farmers have access to complaint cattle feed.", "e. 100% dairy farmers have access to compliant cattle feed.", "f. None of the above", "g. Not aware"],
+                    "1.2.2.8 Dry fodder protection": ["a. 100% of dairy farmers are aware of dry fodder coverage to avoid mould and infestation", "b. 100% of dairy farmers practice dry fodder coverage and prevent mould and infestation", "c. 100% of dairy farmers have access to materials at an affordable price to cover the dry fodder and protect it from any fungal infestations that cause aflatoxins", "d. 100% of dairy farmers adopt dry fodder coverage using best in class materials, tools and techniques made available as service and product at dairy farmers’ doorstep", "e. Dry cattle feed is well protected in warehouses that are covered and disinfected frequently", "f. None of the above", "g. Not aware"],
+                    "1.2.2.9 Liver detoxification": ["a. 100% of dairy farmers are aware and having knowledge about liver detoxification and its impact on reduced aflatoxin in milk", "b. 100% of dairy farmers use liver detoxification medicines like Liv 52 syrup or equivalent medicines daily to prevent effects of aflatoxins on 100% of their cattle", "c. 100% of dairy farmers have access to Liv 52 or equivalent at an affordable price at their doorstep and are using the same on 100% of their milching cattle everyday", "d. 100% of dairy farmers have access to affordable liver detoxification medicines at their doorstep and use the same on 100% of their cattle every day", "e. 100% of cattle in the herd are provided with prescribed dosages of liver detoxification medicines all the year at all the physiological stages of the animal", "f. None of the above", "g. Not aware"],
+                    "1.2.2.10 Acidosis": ["a. 100% of dairy farmers are aware and have knowledge regarding acidosis in the animals and resulting increase in aflatoxin contamination", "b. 100% of dairy farmers add buffer to the feed like eating soda @ 40-50 grams per cattle every day to maintain rumen PH", "c. 100% of dairy farmers have access to soda and provide prescribed dosage of eating soda / buffer to the feed every day to milching cattle", "d. 100% of dairy farmers have timely access to affordable buffer/eating soda at the doorstep and they provide prescribed dosage of buffer /eating soda to 100% of their cattle", "e. All cattle in the herd are provided feed with buffer as per the global standards soil every day for all the feeds provided through the day", "f. None of the above", "g. Not aware"],
+                    "1.2.2.11 Protection of feed": ["a. 100% of dairy farmers are aware of feed storage and protection guidelines (raised platform and away from the walls) to avoid humidity and resultant mould infestation", "b. 100% of dairy farmers store feed as per the prescribed guidelines (above raised platform, away from walls) and ensure they protect feed from infestation arising from humidity", "c. 100% of dairy farmers have a dedicated storage area for feed that is designed using all prescribed norms that prevent any mould infestation arising due to humid conditions", "d. 100% of dairy farmers have access to finance at an affordable rate of interest and expertise to build feed storage spaces that are in line with prescribed guidelines to avoid an mould infestations", "e. All feed is stored in well ventilated warehouses protected from humidity and other externalities to avoid any future mould infestations", "f. None of the above", "g. Not aware"],
+                    "1.2.2.12 Clean feed manger and water": ["a. 100% of dairy farmers are aware of cleaning feeding and water spaces after every feed to avoid any future fungal infestations", "b. 100% of dairy farmers adopt cleaning practices every day to clean all feed and water spaces", "c. 100% of dairy farmers clean all their feeding and water spaces after every feed", "d. 100% of dairy farmers clean entire cattle sheds e specially feeding and water spaces after feed with clean water", "e. All feeding and water spaces in the dairy shed are cleaned, and scrubbed with tested water post every feed with prescribed chemicals", "f. None of the above", "g. Not aware"]
+                }
+            },
+            "1.3 Dairy Farm Hygiene": {
+                "1.3.1 Hygiene Management": {
+                    "1.3.1.1 Cleaning and disinfection": ["a. 80% of the dairy farmers are aware of cleaning of floor of milkshed, feed storage and water spaces and all milking equipment’s, feeding utensils using approved non-corrosive detergent and disinfectant as per the industry standards", "b. 100% of dairy farmers have access to approved non-corrosive detergent and disinfectant for cleaning of floor, feed and water spaces and all milking equipment’s as per the industry standards", "c. 100% dairy farmers practice milk shed hygiene and have access to affordable approved chemicals and disinfectants", "d. 100% dairy farms floor, feed and water spaces and all milking equipment’s are cleaned using approved non-corrosive detergent and disinfectant as per the industry standards", "e. Dairy farm, equipment’s, pathways, feed spaces and waterways are cleaned at least twice a day as per schedule using industry standard chemicals", "f. None of the above", "g. Not aware"],
+                    "1.3.1.2 Assessment of cleanliness": ["a. 80% of the dairy farmers are aware of assessment of cleanliness of farm done regularly as per industry standards", "b. 100% of dairy farmers assess cleanliness of farm regularly as per industry standards", "c. 100% dairy farmers assess and monitor cleanliness of dairy farm and milking equipment’s regularly as per industry standards", "d. 100% of dairy farms and milking equipment’s are assessed and monitored for cleanliness regularly as per industry standards", "e. Dairy farms and milking equipment’s are audited regularly for cleanliness as per industry standards", "f. None of the above", "g. Not aware"],
+                    "1.3.1.3 Access to water": ["a. 100% dairy farms are aware of importance of access to adequate water through the day for cleaning", "b. 80% dairy farms have access to adequate water through the day for cleaning", "c. 100% dairy farms have access to adequate water through the day for cleaning", "d. 100% dairy farms have affordable access to adequate water through the day for cleaning", "e. Clean and tested water available through the day for cleaning and maintaining milk shed hygiene", "f. None of the above", "g. Not aware"],
+                    "1.3.1.4 Provision for drainage and waste disposal (only for commercial farms)": ["a. 40% of the dairy farmers are aware of practices for drainage and waste water as per the approved standards", "b. 60% of dairy farmers are aware and practice drainage and waste water as per the approved standards", "c. 80% dairy farmers are aware and practice drainage and waste water treatment (recycle, reuse) as per the approved standards", "d. 100% dairy farms have well planned and managed drainage and waste water as per the approved standards", "e. Dairy farms are designed best in class to manage and drainage and waste water as per approved standards", "f. None of the above", "g. Not aware"],
+                    "1.3.1.5 Farmer /Staff personal hygiene": ["a. 100% of farmers/ staff have full awareness of personal hygiene practices.50% of farmers practice personal hygiene practices on the dairy farms (handwashing, clean clothing, masking, etc.)", "b. 60% dairy farmers follow personal hygiene practices as per industry norms (handwashing, clean clothing, masking, etc.)", "c. 80% dairy farmers follow personal hygiene practices as per industry norms (handwashing, clean clothing, masking, etc.)", "d. 100% dairy farmers /staff practice Personal hygiene on the dairy farms as per industry norms (handwashing, clean clothing, masking, etc.)", "e. 100% staff practice personal hygiene as per industry norms (handwashing, clean clothing, masking, PPE etc.)", "f. None of the above", "g. Not aware"],
+                    "1.3.1.6. Animal Grooming": ["a. 80% of dairy farmers are aware of animal grooming practices .40% of the farmers adopt animal grooming practices and segregation of all animal personal hygiene material materials and separate disposal", "b. 100% of dairy farmers are aware of animal grooming practices. 60% dairy farmers practice animal grooming practices regularly and all animal personal hygiene materials are segregated and disposed separately", "c. 80% dairy farmers practice animal grooming practices regularly", "d. 100% of animals are groomed regularly and all animal personal hygiene material materials are segregated and disposed separately", "e. 100% herd is groomed regularly and their personal hygiene material materials are segregated and disposed of separately as per prescribed standards", "f. None of the above", "g. Not aware"],
+                    "1.3.1.7 Hoof hygiene": ["a. 100% of dairy farmers are aware and have knowledge of hoof hygiene", "b. 80% dairy farms adopt and ensure animal hoof hygiene measures like foot baths, hoof mats and foaming systems", "c. 100% dairy farms adopt and have access to animal hoof hygiene measures like foot baths, hoof mats and foaming systems", "d. 100% dairy farms adopt and have affordable access to and ensure animal hoof hygiene measures like foot baths, hoof mats and foaming systems", "e. Hoof hygiene measures are best ensured in 100% cattle in the herd", "f. None of the above", "g. Not aware"],
+                    "1.3.1.8 Udder hygiene": ["a. 100% of dairy farmers are aware of udder hygiene practices. 50% Majority of the farmers practice udder hygiene practices as per Indian prescribed norms before milking", "b. 70% dairy farmers follow udder hygiene practices as per Indian prescribed norms before milking 100% of their milching cattle", "c. 80% dairy farmers follow udder hygiene practices as per Indian prescribed norms before milking for 100% of their milching cattle", "d. 100% dairy farmers adopt and practice udder hygiene as per Indian prescribed norms followed before milking for 100% of their milching cattle", "e. Udder hygiene practices adopted as per Indian prescribed norms across 100% of cattle in the herd", "f. None of the above", "g. Not aware"],
+                    "1.3.1.9 Manure Management": ["a. 80% of dairy farmers are aware and have knowledge of manure management practices (such as composting system, crushing, screening, mixing, granulating, drying and cooling and packaging)", "b. 100% of dairy farmers are aware and have knowledge of manure management practices. 80% of dairy farmers have access to manure management equipment", "c. 100% of dairy farmers have access to manure management equipment and infrastructure. 80% dairy farmers adopt manure management practices", "d. 100% of dairy farmers adopt manure management practices", "e. 100% of dairy farms practice best in class manure management practices.", "f. None of the above", "g. Not aware"],
+                    "1.3.1.10 Biogas Installation": ["a. 80% of dairy farmers are aware and have knowledge of biogas and their benefits", "b. 100% of dairy farmers are aware and have knowledge of biogas. 60% of dairy farmers have access to biogas loans and subsidies", "c. 80 % of dairy farmers are able to access loans/ subsidies to install biogas plants and 60% of eligible farmers have biogas unit on the farm", "d. 100% of dairy farmers have access to biogas loans and subsidies and 80% of eligible farmers have biogas unit on farm. Solid waste is used as manure in 80% of farms", "e. 100% of dairy farmers have access to biogas loans and subsidies and 100% of eligible farmers have biogas unit on farm. Solid waste is used as manure in 100% of farms", "f. None of the above", "g. Not aware"],
+                    "1.3.1.11 Water Conservation Management": ["a. 80% of dairy farmers are aware of water conservation practices such as water harvesting, reusing and recycling water", "b. 100% of dairy farmers are aware of water conservation practices such as water harvesting, reusing and recycling water. 40% of dairy farmers practice reusing and recycling water and water storage", "c. 60% of dairy farmers practice rainwater harvesting, reusing and recycling water and water storage.", "d. 80% of dairy farmers practice rainwater harvesting, reusing and recycling water and water storage.", "e. 100% of dairy farms practice best in class practices to conserve water and use sustainable dairy and agricultural practices on the farms.", "f. None of the above", "g. Not aware"]
+                }
+            },
+            "1.4 Stress in Cattle": {
+                "1.4.1 Stress management": {
+                    "1.4.1.1 Farm shed Design": ["a. 100% of dairy farmer have awareness and knowledge of farm shed design that reduced stress of cattle. 60% of dairy farmers have access to loans/ subsidies to construct some improved cattle shed as per prescribed norms", "b. 80% dairy farmers have access to loans/ subsidies to construct improved cattle shed as per prescribed norms", "c. 80% of cattle sheds and their roof are designed to suit to the local climatic conditions", "d. 100% of cattle sheds and their roof are designed to suit to the local climatic conditions", "e. Dairy farms have customized cattle shed for calf, heifers, bulls and milching cows", "f. None of the above", "g. Not aware"],
+                    "1.4.1.2 Protection from climate extremes": ["a. 100% of dairy farmers are awareness of the protection of cattle shed from climate extremes. 60% of cattle sheds are well- ventilated, protected from extremes of weather, have optimal space for animals and clean drinking water", "b. 80% Majority of cattle shed are fully ventilated, dampness free with complete protection from extremes of weather events (wind, solar radiation etc.) and loud noises", "c. 100% cattle shed are fully ventilated, dampness free with complete protection from extremes of weather events (wind, solar radiation etc.), loud noises and protected by boundary / fence", "d. 100% cattle shed are fully ventilated (with coolers and exhausts), dampness free with complete protection from extremes of weather events (wind, solar radiation etc.) and loud noises", "e. Dairy farms have provision for water sprays, exhausts and coolers to manage heat and other climate induced stress", "f. None of the above", "g. Not aware"],
+                    "1.4.1.3 Safe surfaces": ["a. 100% of dairy farmers are aware and have sufficient knowledge on factors that affect cattle milk productivity like stress induced due to improper ventilation in cattle shed, no protection or shade, inconvenient floor surface and inadequate space for resting, movement and feeding", "b. 80% of cattle shed have skid free, soil/dirt free, dry and comfortable flooring to move and rest", "c. 100% of cattle shed have skid free, soil/dirt free, dry and comfortable flooring to move and rest", "d. 80% cattle sheds have concrete floors with proper provision for drainage and waste handling. Floors are cleaned regularly and comfortable to rest", "e. 100% cattle sheds have concrete floors with proper provision for drainage and waste handling. Floors are cleaned regularly and comfortable to rest", "f. None of the above", "g. Not aware"],
+                    "1.4.1.4 Comfort of cattle": ["a. 100% of dairy farmers are aware and have sufficient knowledge on factors that affect cattle milk productivity due to lack of space for free movement", "b. 100% of dairy farmers have awareness of loose housing", "c. 60% of dairy farmers adopt well protected loose housing system with well-defined boundary", "d. 80% of dairy farmers adopt well protected loose housing system with well-defined boundary", "e. 100% dairy farms have well protected loose housing system with a well-defined boundary", "f. None of the above", "g. Not aware"],
+                    "1.4.1.5 Space in shed": ["a. 100% of dairy farmers are aware and have sufficient knowledge on factors that affect cattle milk productivity due to insufficient space to move and rest.", "b. 100% dairy farmers are aware and have knowledge of importance of space in shed for cattle to move and rest", "c. 80% cattle sheds have optimal space for animals to move and clean drinking water", "d. 100% cattle sheds have optimal space for animals to move and clean drinking water", "e. All cattle sheds in dairy farms are designed to provide ample space as per industry norms and safe surfaces to minimize injuries and discomfort", "f. None of the above", "g. Not aware"],
+                    "1.4.1.6 Waste handling and disposal": ["a. 100% of dairy farmers are aware and have knowledge of waste handling and disposal", "b. 80% dairy farms have provision for ETP plant to treat wastewater", "c. 100% Dairy farms have provision for ETP plant to treat wastewater", "d. 80% dairy farms have provision of biogas for solid waste management and reduce methane emissions", "e. 100% dairy farms have provision of biogas for solid waste management and reduce methane emissions", "f. None of the above", "g. Not aware"]
+                }
+            },
+            "1.5 Cattle Breeding": {
+                "1.5.1 Breed management": {
+                    "1.5.1.1 Cattle breed and identification": ["a. 80% of dairy farmers are aware about different cattle breeds, their productivity and their identification.", "b. 100% dairy farmers are aware about different cattle breeds and their breed identification.", "c. 60% dairy farmers are introducing new breeds in their herd", "d. 80% dairy farmers introducing new breeds into their herd", "e. Dairy farms adopt strategic plans to introduce new breeds and cattle in the herd", "f. None of the above", "g. Not aware"],
+                    "1.5.1.2 Reproductive management": {
+                        "1.5.1.2.1 Disease prevention": ["a. 40% of dairy farmers are aware of diseases or difficulties faced during previous calving. They follow programs of disease tests/prevention.", "b. 60% of dairy farmers are aware of diseases or difficulties faced during previous calving. They follow programs of disease tests/prevention.", "c. 80% of dairy farmers are aware of diseases or difficulties faced during previous calving. They follow programs of disease tests/prevention.", "d. 100% of dairy farmers are aware of diseases or difficulties faced during previous calving. They follow programs of disease tests/prevention.", "e. 100% dairy farms have access to and follow programs of disease tests/ prevention relevant to reproductive management", "f. None of the above", "g. Not aware"],
+                        "1.5.1.2.2 Reproductive Management practices": ["a. 40% of dairy farmers have awareness and knowledge of reproductive management practices", "b. 60% of dairy farmers have awareness and knowledge of reproductive management practices", "c. 80% of dairy farmers have awareness and knowledge of reproductive management practices (such as heat management, nutrition management and stress free environment)", "d. 100% of dairy farmers have access to reproductive management practices (such as heat management, parturition management sire monitoring, nutrition management and stress free environment)", "e. 100% of Dairy farms practice best in class reproductive management practices", "f. None of the above", "g. Not aware"]
+                    },
+                    "1.5.1.3 Documentation and maintenance of records": {
+                        "1.5.1.3.1 Life Cycle Records": ["a. 100% of dairy farmers have awareness of maintenance of lifecycle records.60% of farmers maintain written records of cattle life cycle (age, lactations, calf mortality etc.).", "b. 80% dairy farmers maintain written records of cattle life cycle (age, lactations, calf mortality etc.)", "c. 100% dairy farmers maintain written records of cattle life cycle (age, lactations, calf mortality etc.)", "d. 100% dairy farmers maintain digital records of cattle life cycle (age, lactations, calf mortality etc.)", "e. Dairy farms have digital records of 100% herd lifecycle (age, lactations, calf mortality etc.) are maintained", "f. None of the above", "g. Not aware"],
+                        "1.5.1.3.2 Breeding Records": ["a. 100% of dairy farmers are aware of maintenance of breeding records. 60% of farmers keep accurate written breeding records of dates of heat, service and parturition.", "b. 80% of farmers keep accurate written breeding records of dates of heat, service and parturition.", "c. 100% of dairy farmers keep accurate written breeding records of dates of heat, service and parturition.", "d. 80% of dairy farmers keep accurate digital breeding records of dates of heat, service and parturition. They use these records in predicting the dates of heat and observe the females carefully for heat.", "e. 100% dairy farmers keep accurate digital breeding records of dates of heat, service and parturition. They use these records in predicting the dates of heat and observe the females carefully for heat.", "f. None of the above", "g. Not aware"]
+                    },
+                    "1.5.1.4 Infertility": ["a. 60% of dairy farmers are aware of infertility treatments and are aware of measures to improve fertility of cattle", "b. 80% of dairy farmers are aware of infertility treatments and 50% farmers are adopting of measures to improve fertility of cattle", "c. 80% of dairy farmers are aware of infertility treatments and 70% farmers are adopting of measures to improve fertility of cattle", "d. 100% dairy farmers are aware of infertility treatments and 80 % of dairy farmers are adopting measures to improve fertility of cattle. Government programs and budgets are leveraged to strengthen these services", "e. 100% dairy farmers are aware of infertility treatments and 100 % of dairy farmers are adopting measures to improve fertility of cattle.", "f. None of the above", "g. Not aware"],
+                    "1.5.1.5 AI services": ["a. 100% of dairy farmers are aware of AI in cattle.40% of farmers are aware of resources for credible semen sources and high quality AI services.", "b. 60% of dairy farmers have access to resources for credible semen source and high quality AI services.", "c. 80% dairy farmers have timely access to resources for credible semen source and high quality AI services.", "d. 100% dairy farmers have timely access to resources for credible semen source and high quality AI services.", "e. Dairy farm has in-house semen bank and full fledged AI expertise", "f. None of the above", "g. Not aware"],
+                    "1.5.1.6 Pregnancy Management": ["a. 100% of dairy farmers are aware that they have to reach out to Para veterinarian or veterinarians for pregnancy management.50% of dairy farmers manage pregnancy with inputs from at least a paravet through on-call support.", "b. 70% of dairy farmers manage pregnancy with inputs from a qualified veterinarian/ paravet through on-call support.", "c. 90% of dairy farmers manage pregnancy with inputs from a qualified veterinarian/ paravet. The veterinarian service is also used to examine cows periodically.", "d. 100% dairy farmers manage pregnancy with inputs from a qualified veterinarian.", "e. Dairy farm has in-house experts team of veterinarians to timely treat infertility, pregnancy related complications etc.", "f. None of the above", "g. Not aware"]
+                }
+            }
+        },
+        "2. Dairy Extension Services": {
+            "2.1 Services": {
+                "2.1.1 Team structure and size": ["a. 100% dedicated field extension team", "b. 100% Dedicated and qualified field extension team for building capability of dairy farmers", "c. 100% Dedicated, experienced and qualified dairy and veterinary extension teams available for capability building of dairy farmers", "d. 100% Dedicated, qualified, and experienced dairy extension teams (Diploma/Degree in agriculture, livestock, dairy, veterinary) to build the capability of dairy farmers", "e. 100% Dedicated, qualified, and experienced dairy extension teams (Diploma/Degree in agriculture, livestock, dairy, veterinary / Minimum 3 years' experience) to build the capability of dairy farmers", "f. None of the above", "g. Not aware"],
+                "2.1.2 Functional dairy extension department": ["a. 100% Dedicated and qualified Field extension team", "b. 100% Dedicated Field extension team is single point of contact for 100% extension and procurement related communication with farmers", "c. 100% Dedicated department available for planning, implementation, and monitoring of dairy extension activities", "d. 100% Dedicated IT-enabled dairy extension department that works closely with the procurement department on the field to ensure both quality dairy extension services and quality milk procurement", "e. 100% Dedicated departments (procurement, veterinary) to offer extension services", "f. None of the above", "g. Not aware"],
+                "2.1.3 Monitoring of extension services": ["a. Procurement department is accountable for 100% dairy extension activities", "b. Regular monitoring of extension services, training materials, and training delivery is ensured", "c. Regular monitoring of extension services, training materials, and training delivery is ensured using digital records and a monitoring system", "d. Dairy Extension policy framework is in place", "e. Five Year Dairy Extension Policy Framework / Vision Document is in place", "f. None of the above", "g. Not aware"],
+                "2.1.4 Convergence of funds from the Government": ["a. 60% of funds for dairy extension are from 100% dairy extension team is aware of government schemes and subsidies available for dairy extension services", "b. convergence with government services for knowledge and skill building on dairy extension", "c. 80% of funds for dairy extension are from convergence with government schemes for dairy extension services", "d. 100% of funds for dairy extension are from convergence with government schemes and subsidies for dairy extension services", "e. All extension activities are done in partnership with government schemes and funds.", "f. None of the above", "g. Not aware"],
+                "2.1.5 Budget allocation for extension activities": ["a. 100% Dedicated Budget available for hiring of dedicated dairy extension team", "b. 100% Dedicated Budget available for dedicated dairy extension activities (workshop, travel, awareness camps, etc.)", "c. 100% Dedicated budgets for exposure visits, demonstration plots, training, and awareness camps.", "d. 100% Dedicated budgets allocated for all dairy extension activities including but not limited to a trainer of trainer program, creation of communication material, development of training modules, dedicated training center, etc.", "e. 100% Dedicated budgets allocated to all dairy extension activities including training and capability of the dairy extension teams", "f. None of the above", "g. Not aware"],
+                "2.1.6 Communication with dairy farmers": ["a. Periodic communication with dairy farmers, as and when needed", "b. Regular communication with dairy farmers", "c. 100% Dedicated Communication channels which can also be used for 2-way communication (between the Beneficiary and Extension Department)", "d. 100% Dedicated Communication channels (for example, radio and television broadcasts and face-to-face communication) which can also be used for 2-way communication (between the beneficiary and Extension Department", "e. 100% Dedicated Communication channels (for example, Farmer camps, mobile APPs, Website, Call Centre, Toll-Free, Social Media Pages) which can also be used for 2-way communication (between the beneficiary and Extension Department", "f. None of the above", "g. Not aware"]
+            },
+            "2.2 Training": {
+                "2.2.1 Capability building of team and trainer of trainers": ["a. 100% of the field extension team are aware of training sessions and these sessions are conducted at least once a year", "b. 80% field extension team have access to trainings for trainer programs conducted regularly to build a cadre of trained extension resources", "c. 100% field extension team have access to trainings for trainer programs conducted regularly to build a cadre of trained extension resources", "d. 100% field extension team have timely access to training for trainer programs customized to the region based on the prevalent situations", "e. All Dairy farms have in-house trained resources who have expertise to disseminate best practices to teams in a timely manner", "f. None of the above", "g. Not aware"],
+                "2.2.2 Training materials": ["a. 100% of the training modules/topics are decided based on standard dairy extension topics (for example, Hygiene, Animal care, EVMs, etc.). These modules are not need-based or on current issues/problem areas", "b. 80% field extension team have access to holistic training materials", "c. 100% field extension team have access to holistic training materials covering all aspects of animal care, milking and pouring", "d. 100% field extension team have access to holistic training materials covering all aspects of animal care, milking and pouring, and marketing along with reference to the latest developments / new practices in dairy from leading research institutes", "e. 100% of Dairy farms have Holistic training materials covering all aspects of animal care, milking and pouring, and marketing along with reference to the latest developments / new practices in dairy from leading research institutes", "f. None of the above", "g. Not aware"],
+                "2.2.3 Exposure visits": ["a. 100% of the field extension team are aware of and have access to classroom training (traditional methods)", "b. 40% field extension team have access to gaining real-time experiences through exposure visits to demonstration farms and progressive farmers that practice good dairy practices", "c. 60% field extension team have access to gaining real-time experiences through exposure visits to demonstration farms and progressive farmers that practice good dairy practices", "d. 80% field extension team have access to gaining real-time experiences through exposure visits to demonstration farms and progressive farmers that practice good dairy practices", "e. 100% dairy extension teams access to gaining real-time experiences through exposure visits to demonstration farms and progressive farmers that practice good dairy practices is ensured.", "f. None of the above", "g. Not aware"],
+                "2.2.4 Upskilling": ["a. 60% field extension team have access to versatile trainings and training modules that are available both offline and online in their regional/ local language", "b. 80% field extension team have access to versatile trainings and training modules that are available both offline and online in their regional/ local language", "c. 100% field extension team have timely access to affordable and versatile training and training modules that are available both offline and online in their regional/ local language", "d. Dairy farms have versatile training and training modules that are available both offline and online in their regional/ local language", "e. Upskilling of 100% dairy extension teams with timely access to the latest scientific advancements in animal healthcare, dairy farming, milk procurement, and milk marketing is ensured", "f. None of the above", "g. Not aware"],
+                "2.2.5 Field Situation": ["a. 20% field extension team have access to streamlined follow ups to get first handed information on field situations", "b. 40% field extension team have access to streamlined follow ups to get first handed information on field situations", "c. 60% field extension team have access to streamlined follow ups to get first handed information on field situations", "d. 80% field extension team have access to streamlined follow ups to get first handed information on field situations", "e. 100% field extension team have timely access to streamlined follow ups to get first-handed information on field situations", "f. None of the above", "g. Not aware"]
+            },
+            "2.3 Research": {
+                "2.3.1 Dairy farm level documentation and record-keeping": ["a. 100% of dairy extension team is aware of demonstration pilots.", "b. 100% of dairy demonstration farm units are monitored on regular basis", "c. 100% dairy demonstration farm units are monitored regularly and farm situation data written records are maintained", "d. 100% of dairy demonstration farm units is monitored on day to day basis and farm situation date is digitally maintained", "e. 100% of dairy demonstration farm units are linked to central database through ERP and all data is reviewed on real time basis", "f. None of the above", "g. Not aware"],
+                "2.3.2 Dairy farm analysis and management": ["a. 100% of dairy extension field team are aware and have sufficient knowledge to observe dairy demonstration units and collect farm situation data.", "b. 100% dairy extension field teams are well equipped to understand how farm analysis results can be incorporated in the farm day to day decision making and farm management", "c. 80% dairy farmers are aware and have sufficient knowledge of farm management. 80% dairy farmers can identify and explain farm management functions and management areas.", "d. 100% dairy farmers are aware and have sufficient knowledge of farm management. 100% dairy farmers can identify and explain farm management functions and management areas.", "e. 100% Dairy Farms ensure farm management practices are carried out efficiently. Dairy Farms ensure farm management functions are carried out smoothly and management areas are checked periodically and improved upon regularly", "f. None of the above", "g. Not aware"],
+                "2.3.3 Farm assessment and improvement": ["a. 80% field supervisors have sufficient knowledge and understanding of how farm analysis results can be incorporated into the farm day to day decision making and farm management", "b. 80% dairy farmers are skilled on farm assessment and preparing farm improvement plans", "c. 100% dairy farmers are skilled on-farm assessment and preparing farm improvement plans", "d. 100% dairy farmers are skilled in on-farm assessment and preparing farm improvement plans. Government programs and budgets are leveraged to strengthen these skills and improve farm situations", "e. Dairy Farms are assessed regularly and farm improvement plans are carried out periodically", "f. None of the above", "g. Not aware"]
+            }
+        },
+        "3. Procurement and Milk Quality": {
+            "3.1 Milk Procurement": {
+                "3.1.1 Model of procurement of milk": ["a. Milk procured in two shifts directly from dairy farmers or aggregators at village level milk collection centers (30-50 dairy farmers,200-300 LPD milk procured, average 6 liters per day per dairy farmer)", "b. Milk procured in two shifts directly from dairy farmers at village level milk collection centers (50-100 dairy farmers, 500-800 LPD milk procured, average 8-10 liters per day per dairy farmer)", "c. Milk procured in two shifts directly from dairy farmers through company owned or managed milk collection centers at village level (100-150 dairy farmers, 1000 LPD milk procured, average 8-10 liters per day per dairy farmer)", "d. 100% milk is directly procured from company owned herd size> 1000) or large farmer managed dairy farms (herd size > 300) with yield per cattle greater than 20 LPD", "e. 100% the milk is directly procured from well managed dairy farms (herd size >1000) with yield per animal more than 40 LPD", "f. None of the above", "g. Not aware"],
+                "3.1.2 Milk Pricing": ["a. Milk pricing is based fat and SNF (double axis) (Total solids minimum 11.5% (Fat: SNF 3.2/8.3) as per FSSAI) and determined manually", "b. Milk pricing is based fat and SNF (double axis) (Average solids minimum 12% (Fat: SNF 3.5/8.5 as per FSSAI))) and determined digitally", "c. Milk pricing is based on fat, SNF and determined digitally which is linked automatic rate management system", "d. Milk pricing is based on fat, SNF and proteins linked to automatic rate management system", "e. Milk pricing is based on fat, SNF and proteins and additional incentives linked to superior quality (no residues of aflatoxins, antibiotics)", "f. None of the above", "g. Not aware"],
+                "3.1.3 Milk handling through stainless steel": ["a. 100% of dairy farmers are aware of use of stainless steel containers for milking, storage and pouring.60% of dairy farmers use stainless steel containers for milking and pouring", "b. 80% of dairy farmers use stainless steel containers for milking 100% of VLCs use stainless steel cans for milk handling", "c. 100% of dairy farmers use stainless steel containers for milking and pouring and 100% milk handling equipment at BMCs, VLCs are made of stainless steel", "d. 100% Milk from VLCs transported to BMCs through closed stainless steel GPS enabled tankers", "e. 100% of milk is handled in stainless steel containers from farm to dock with 100% norms adopted for their maintenance", "f. None of the above", "g. Not aware"],
+                "3.1.4 Milk logistics": ["a. 100% of Milk from VLCs to be transported to BMCs through closed roof vehicles", "b. 100% of Bulk Milk Chillers / MCC are set up within 4 hours and milk logistics is optimized through route mapping and time management", "c. 100% BMCs/ MCCs are set up within 4 hours and milk logistics is optimized through GPS monitored route mapping and time management", "d. 100% of Milk transportation is carried in company owned vehicles, maintain complete hygiene and follow best practices", "e. 100% Milk transportation is carried in company owned GPS enabled vehicles adhering to global milk standards", "f. None of the above", "g. Not aware"],
+                "3.1.5 Data Processing": ["a. 80% of village collection centers have DPUs", "b. 100% village collection centers have DPUs", "c. 100% village collection centers have dairy farmer records linked to company ERP", "d. 100% of village collection centers and BMC have AMCS with centralized repository of individual records linked to ERP and the same is used to make payments to farmers directly to their bank accounts", "e. 100% of DPUS VLCs and BMCs are linked to company and data is used to trace early signals to evade milk contamination", "f. None of the above", "g. Not aware"],
+                "3.1.6 Farmer Payments": ["a. Direct payment to dairy farmers on monthly basis", "b. Direct payment to dairy farmers on fortnightly basis", "c. Direct bank payment to dairy farmers through 10-day payment cycle", "d. Direct bank payment to dairy farmers through weekly payment cycle", "e. Direct payment to dairy farmers through a daily payment cycle", "f. None of the above", "g. Not aware"]
+            },
+            "3.2 Milk Quality": {
+                "3.2.1 Adherence to standard operating procedures (Pick multiple options)": [
+                    "BMC/MCC equipped to test Fat, SNF, Adulteration (salt, sugar, urea) MBRT, Protein (for MCC), Acidity",
+                    "BMC / MCC have experienced people for OT (Olfactory test)",
+                    "BMC/MCC have equipment's to calibrate and reset the weighing scales",
+                    "BMC/CC display SOPs and Do's and Don'ts",
+                    "BMC/CC follow all SOPs at all times",
+                    "All SOPs are in line with quality standards (FSSAI) and norms (Shop Act, Fire Safety compliant) as prescribed by the Government from time to time",
+                    "MCC do qualitative test (microbial, antibiotics etc.) as per standard lab protocol on testing milk samples for quality and safety",
+                    "MCC are equipped to test (physical, chemical, microbial, antibiotics etc.) as per standard lab protocol on testing milk samples for quality and safety",
+                    "BMC/CC have chambers to segregate milk",
+                    "Dairy farm adheres to global dairy quality standards like HACCP",
+                    "None of the above",
+                    "Not aware"
+                ],
+                "3.2.2 Quality of milk defined through Methylene Blue Dye Reduction Test": ["a. MBRT < 1 hour", "b. MBRT 1-2 hours", "c. MBRT 2-3 hours", "d. MBRT 3-4 hours", "e. MBRT > 5 hours", "f. None of the above", "g. Not aware"],
+                "3.2.3 Aflatoxin": ["a. Volume of milk rejected due to aflatoxin is 20%", "b. Volume of milk rejected due to aflatoxin is 15-20%", "c. Volume of milk rejected due to aflatoxin is 10-15%", "d. Volume of milk rejected due to aflatoxin is 5-10%", "e. Volume of milk rejected due to aflatoxin is 0-5%", "f. None of the above", "g. Not aware"],
+                "3.2.4 Antibiotic- B lactam": ["a. Volume of milk rejected due to B lactam antibiotic contamination is 20%", "b. Volume of milk rejected due to B lactam antibiotic contamination is 15-20%", "c. Volume of milk rejected due to B lactam antibiotic contamination is 10-15%", "d. Volume of milk rejected due to B lactam antibiotic contamination is 5-10%", "e. Volume of milk rejected due to B lactam antibiotic contamination is 0-5%", "f. None of the above", "g. Not aware"],
+                "3.2.5 Antibiotic- Sulphanomide": ["a. Volume of milk rejected due to sulphanomide antibiotic contamination is 20%", "b. Volume of milk rejected due to sulphanomide antibiotic contamination is 15-20%", "c. Volume of milk rejected due to sulphanomide antibiotic contamination is 10-15%", "d. Volume of milk rejected due to sulphanomide antibiotic contamination is 5-10%", "e. Volume of milk rejected due to sulphanomide antibiotic contamination is 0-5%", "f. None of the above", "g. Not aware"],
+                "3.2.6 Antibiotic- Chloramphenicol": ["a. Volume of milk rejected due to chloramphenicol antibiotic contamination is 20%", "b. Volume of milk rejected due to chloramphenicol antibiotic contamination is 15-20%", "c. Volume of milk rejected due to chloramphenicol antibiotic contamination is 10-15%", "d. Volume of milk rejected due to chloramphenicol antibiotic contamination is 5-10%", "e. Volume of milk rejected due to chloramphenicol antibiotic contamination is 0-5%", "f. None of the above", "g. Not aware"],
+                "3.2.7 Antibiotic- Tetracycline": ["a. Volume of milk rejected due to Tetracycline antibiotic contamination is 20%", "b. Volume of milk rejected due to Tetracycline antibiotic contamination is 15-20%", "c. Volume of milk rejected due to Tetracycline antibiotic contamination is 10-15%", "d. Volume of milk rejected due to Tetracycline antibiotic contamination is 5-10%", "e. Volume of milk rejected due to Tetracycline antibiotic contamination is 0-5%", "f. None of the above", "g. Not aware"]
+            }
+        },
+        "4. Women Empowerment -Participation and Entrepreneurship": {
+            "4.1 Community gender sensitization": ["a. 40% of the community is aware of the role of women in dairy farming", "b. 50% community is sensitized to gender roles and the role of women in dairy farming", "c. 60% community is sensitized to gender roles and the role of women in dairy farming", "d. 80% community is sensitized to gender roles and the role of women in dairy farming", "e. 100% of the community in the dairy milk shed is sensitized to gender roles and the role of women in dairy farming", "f. None of the above", "g. Not aware"],
+            "4.2 Know-how of dairy economics": ["a. 50% of the women dairy farmers are aware of dairy practices, dairy economics and are financially literate", "b. 70% women dairy farmers’ knowledge and built self-efficacy around dairy best practices, understand dairy economics and are financially included", "c. 80% women dairy farmers with sound knowledge of dairy economics and are connected to financial institutions", "d. 100% women dairy farmers have sound knowledge of dairy economics and are connected to financial institutions", "e. 100% women dairy farmers are empowered to use digitally solutions to improve financial inclusion", "f. None of the above", "g. Not aware"],
+            "4.3 Status of women leadership": ["a. 30% Women have access to periodic awareness camps, training programs, leadership development etc. focused on developing women led enterprises", "b. 50% Women have access to periodic awareness camps, training programs, leadership development etc. focused on developing women led enterprises", "c. 100% women farmer led dairy value chain and businesses encouraged (Women lead milk producer company).", "d. Dedicated dairy entrepreneurship program promoted with a focus on women entrepreneurs", "e. 100% of dairy extension teams are run, managed and supervised by all women team", "f. None of the above", "g. Not aware"],
+            "4.4 Capability building of women": ["a. 30% women access workshops, seminars and training programmes focused on skill development and dairy entrepreneurship", "b. 50% of women dairy farmers access workshops, seminars and training programmes focused on skill development and dairy entrepreneurship", "c. 80% women dairy farmers access workshops, seminars and training programmes focused on skill development and dairy entrepreneurship. Special incentives provided to women dairy farmers in order to increase participation in dairy training programs.", "d. 100% women dairy farmers access workshops, seminars and training programmes focused on skill development and dairy entrepreneurship. Special incentives provided to women dairy farmers in order to increase participation in dairy training programs", "e. 100% women farmer led dairy value chain and businesses encouraged (Women led milk producer company)", "f. None of the above", "g. Not aware"],
+            "4.5 Status of promotion of Innovation": ["a. 40% woman are encouraged to innovate better ways of doing dairy and farm businesses and are regularly exposed to innovations globally", "b. 60% women are encouraged to innovate better ways of doing dairy and farm businesses and are regularly exposed to innovations globally", "c. 80% women are encouraged to innovate better ways of doing dairy and farm businesses and are regularly exposed to innovations globally", "d. 100% women are encouraged to innovate better ways of doing dairy and farm businesses and are regularly exposed to innovations globally. Government programs and schemes are leveraged for wider access", "e. Dairy farms use best in class trainings and programs for encouraging women to innovate better ways of doing dairy and farm businesses and regularly expose them to innovations globally.", "f. None of the above", "g. Not aware"],
+            "4.6 Community Groups": ["a. 30% of milk suppliers are women SHG / JLG groups", "b. 50% of milk suppliers are women SHG / JLG groups", "c. 70% Women dairy farmers part of SHGs/JLG groups are encouraged to supply milk and are facilitated with credit linkages to improve their dairy farm", "d. 90% Women dairy farmers part of SHGs/JLG groups are encouraged to supply milk and are facilitated with credit linkages to improve their dairy farm", "e. 100% Women dairy farmers part of SHGs/JLG groups are encouraged to supply milk and are facilitated with credit linkages to improve their dairy farm", "f. None of the above", "g. Not aware"],
+            "4.7 Farm Practices": ["a. 80% Women actively participate in dairy farming practices on the farm", "b. 100% of Women actively participate in all dairy farming practices on the farm and 50% involved in marketing of the milk", "c. 100% of Women actively participate in all dairy farming practices on the farm and 100% involved in marketing of the milk", "d. 80% women dairy farmers actively participate in all labour, business and financial aspects of dairy farming", "e. 100% women dairy farmers actively participate in all labour, business and financial aspects of dairy farming", "f. None of the above", "g. Not aware"]
+        },
+        "5. Strengthening Traceability – Across all Levels": {
+            "5.1 Documentation and record keeping till animal level": ["a. 100% Dairy farmer details, their herd size and basic profile of their cattle maintained by dairy partner (at least hard copy)", "b. 100% Dairy farmer details, their herd size and basic profile of their cattle maintained digitally", "c. Dairy partner has digital records of entire dairy value chain (cattle, farmers, agents, dairy company)", "d. Dairy partner's value chain is digitized (cattle, farmers, agents, dairy company) and data stored in cloud and is accessible on a real time basis.", "e. 100% cattle in the herd are tagged and their complete records (on nutrition, breeding, treatments etc.) linked to digitized records", "f. None of the above", "g. Not aware"],
+            "5.2 Best Practices and exposure visits": ["a. Dairy partner teams have 100% knowledge on early warning system protocols", "b. Dairy partner teams have 100% knowledge on early warning system protocols and their capability is built via knowledge building and training material", "c. Dairy partner teams have 100% knowledge on early warning system protocols and their capability is built periodically through trainings, exposure visits, workshops, best practices, innovations etc.", "d. Dairy partner teams are provided with timely advanced training about best practices and innovation in early warning system protocols", "e. 100% milk produced in the dairy farm is traceable till the animal level", "f. None of the above", "g. Not aware"],
+            "5.3 Early warning system protocols": ["a. 100% dairy partner team are aware and have sufficient knowledge around early warning system protocols", "b. 100% of Early warnings communicated within 12 hours to farmers, agents and dairy extension team at least verbally to prevent possible contamination of milk (through feed or diseases", "c. All early warnings communicated in real time basis, using mobile/ digital applications, to farmers, agents and dairy extension team to prevent possible contamination of milk (through feed or disease)", "d. Dairy partner invested in IT enabled early warnings system (right from the VLC level) and communicates to farmers, agents and dairy extension team on real time basis to prevent possible contamination of milk", "e. Dairy partner has block chain enabled technology based early warning systems that have inbuilt capability to communicate immediately to farmers, agents and dairy extension team on potential deterrents to milk quality", "f. Dairy farm has an in-house robust early warning systems that use advanced statistical models to predict quality deterrents way ahead of the potential deterioration of milk", "g. None of the above", "h. Not aware"],
+            "5.4 Testing of milk": ["a. Dairy partner is outsourcing testing", "b. Dairy partner has well defined SOPs, mechanisms and in-house capability to diagnose root cause of issues and action to resolve the issues.", "c. Dairy partner has in-house experienced and qualified team to diagnose issue and respond within 48 hours", "d. Dairy partner has in-house best in class testing equipment’s that test for all the parameters that ascertain quality milk", "e. Dairy partner has made provision for doorstep testing facility at an affordable price to 80% of farmers to test quality of the milk at farm level", "f. Dairy farm has in-house latest testing equipment for testing all parameters that ascertains milk quality. Testing of milk and samples can be tracked down till individual animal level in a herd", "g. None of the above", "h. Not aware"],
+            "5.5 Root Cause Diagnosis": ["a. Dairy partners have mechanisms to diagnose the root cause of issues", "b. Dairy partners have mechanisms and standard operating processes in place to diagnose the root cause of issues and detailed action plans to resolve the issues.", "c. Dairy partners have access to outside facilities to test for factors affecting milk quality", "d. Dairy partner has in-house testing facility that test for parameters that ascertains milk quality", "e. Dairy partner has in-house testing facility that test for parameters that ascertains milk quality and implement detailed action plans to resolve the issues", "f. None of the above", "g. Not aware"]
         }
-    },
-    "Farm Observation": {
-        "1. Hazard and Contamination": {"type": "text_area", "list": ["Check if there are secure boundaries from adjoining neighbours"]},
-        "2. Treatment Protocols": {"type": "text_area", "list": ["Observe for written treatment process/protocols / investigating forms if he has any"]},
-        "3. Antibiotic Withdrawal Chart": {"type": "text_area", "list": ["Observe for the display of any antibiotic withdrawal limits chart"]},
-        "4. Access to clean drinking water": {"type": "text_area", "list": ["Observe for unlimited drinking water throughout the day for cattle", "Observe the cleanliness of water trough/tank"]},
-        "5. Access to quality and palatable feed": {"type": "text_area", "list": ["Observe the Nutrient composition of feed", "Check if palatable feed is available on the farm"]},
-        "6. Knowledge of alternate feeds and their access": {"type": "text_area", "list": ["Alternate feeds available on farm"]},
-        "7. Carbon Sequestration": {"type": "text_area", "list": ["Observe green fodder on farm", "Observe moringa and other high quality seeds on farm"]},
-        "8. Segregation of feed and equipment's": {"type": "text_area", "list": ["Feed and chemical handling equipment segregated on the farm", "Feed and chemical handling equipment stored properly and separate from each other"]},
-        "9. Feed protection": {"type": "text_area", "list": ["Feed well protected on farm", "Feed properly packed to secure from physical and chemical damages"]},
-        "10. Documentation and maintenance of Feed records": {"type": "text_area", "list": ["Check for records", "Records for cattle feed, ration and nutrition", "Observe the source of availability for purchase of cattle feed"]},
-        "11. Testing of water and feed": {"type": "text_area", "list": ["Observe for water and feed testing reports"]},
-        "12. Knowledge of and access to quality hay and silage": {"type": "text_area", "list": ["Observe for hay and silage usage", "Observe for hay and silage making facilities & process", "Observe for crops used and its harvesting age for hay and silage preparation"]},
-        "13. Usage of toxin binder in cattle feed": {"type": "text_area", "list": ["Observe the practice of using toxin binders in feed", "Observe for a percentage of toxin binder on the feed pack", "Observe for rodents infestation"]},
-        "14. Availability of Compliant Cattle Feed": {"type": "text_area", "list": ["Observe the cattle feed brands used in farm", "Observe the storage area for moisture and elevation, fodder coverage", "Observe for pest incidences & mould/fungal growth"]},
-        "15. Dry fodder protection": {"type": "text_area", "list": ["Observe for fouls smell, colour change, fungus growth, rancidity of dry fodder", "Observe the storage area for moisture and elevation, fodder coverage", "Observe for rodents infestation", "Observe for stacking", "Observe materials used for fodder coverage"]},
-        "16. Liver Detoxification": {"type": "text_area", "list": ["Observe cattle skin and eyes for yellowish tinges jaundice, and color change in urine", "Observe for liver tonics availability in shed"]},
-        "17. Acidosis": {"type": "text_area", "list": ["Observe for the usage of eating soda during feeding"]},
-        "18. Protection of feed": {"type": "text_area", "list": ["Observe for fouls smell, color change, fungus growth, rancidity of cattle feed", "Observe the storage area for moisture and elevation, fodder coverage", "Observe for rodents infestation", "Observe for lumps/ hard mass presence in feed"]},
-        "19. Clean feed manger and water": {"type": "text_area", "list": ["Observe the feed manger and water trough/ vessels for their cleanliness", "Observe for the algae/fungal growth/slimy underlining in water storage structures", "Observe for water transparency", "Observe for feed residues/wastage in water storage structures", "Observe for prevalence of flies", "Observe for height of feed manger and water trough from ground level"]},
-        "20. Cleaning and disinfection": {"type": "text_area", "list": ["Observe for chemicals/ solutions used for cleaning and disinfection"]},
-        "21. Assessment of cleanliness": {"type": "text_area", "list": ["Observe for the cleanliness of floor, stall, bedding", "Observe for floor dryness"]},
-        "22. Access to water": {"type": "text_area", "list": ["Observe for adequate water source availability"]},
-        "23. Provision for drainage and waste disposal (only for commercial farms)": {"type": "text_area", "list": ["Observe for drainage facility", "Observe for dung, urine & water stagnation", "Observe for a distance of the dumping yard from the farm shed"]},
-        "24. Manure Management": {"type": "text_area", "list": ["Observe for the presence of a dumping pit"]},
-        "25. Biogas Installation": {"type": "text_area", "list": ["Observe for presence of bio-gas installation and utilization"]},
-        "26. Water Conservation Management": {"type": "text_area", "list": ["Observe for waste water storage", "Observe for waste water re-utilization"]},
-        "27. Farm Shed Design": {"type": "text_area", "list": ["Observe the type of farm shed (basic/normal, modern)", "Observe the farm shed roof (closed /open)", "Observe for farm having customized cattle shed for calf, heifers, bulls and milking cows.", "Observe for proper drainage, ventilation, aeration", "Observe for cleaning and disinfection solutions"]},
-        "28. Protection from climate extremes": {"type": "text_area", "list": ["Observe well-ventilated, protected from extremes of weather, have optimal space for animals and clean drinking water, loud noises", "Check if there is proper ventilation in cattle shed", "Check if there is shed protection/ shade", "Check if the shed has concrete flooring with proper provisions for waste handling and drainage", "Check if floors, feeding trough and farm shed are cleaned regularly"]},
-        "29. Safe surfaces": {"type": "text_area", "list": ["Check if cattle shed flooring is skid free, soil/dirt free, dry and comfortable to move and rest"]},
-        "30. Comfort of cattle": {"type": "text_area", "list": ["Check if cattle has enough space to move and rest", "Check if well protected loose housing system with well-defined boundary is established on farm"]},
-        "31. Space in shed": {"type": "text_area", "list": ["Check if cattle if optimal space to move and rest", "Check if there is availability of clean drinking water", "Check is the surfaces are safe, to minimize discomfort and injuries"]},
-        "32. Waste handling and disposal": {"type": "text_area", "list": ["Check if cattle has enough space to move and rest", "Check if well protected loose housing system with well-defined boundary is established on farm"]}
-    },
-    "Animal Observation": {
-        "Hygiene Score": {"type": "radio", "options": ["1", "2", "3", "4"]},
-        "Locomotion Score": {"type": "radio", "options": ["1", "2", "3"]},
-        "Body Conditioning Score": {"type": "radio", "options": ["1", "2", "3", "4", "5"]},
-        "Hock Lesion Score (for Hock)": {"type": "radio", "options": ["1", "2", "3", "4", "5"]},
-        "Hock Lesion Score (for Knee)": {"type": "radio", "options": ["1", "2", "3"]},
-        "Udder Score (Udder Suspension)": {"type": "radio", "options": ["1", "2", "3", "4", "5"]},
-        "Udder Score (Teat Size)": {"type": "radio", "options": ["1", "2", "3", "4", "5"]},
-        "Documentation and Maintenance of Cattle Records": {"type": "text_area_list", "list": ["Check for records", "Records for cattle treatment"]},
-        "Animal Grooming": {"type": "text_area_list", "list": ["Observe for tick infestation", "Observe for dung and soil adherence on cow skin coat", "Observe for loose hair", "Observe for grooming materials like brushes etc", "Observe for ears, tails, and lower side of hip joints for cleanliness"]},
-        "Hoof Hygiene": {"type": "text_area_list", "list": ["Observe for lameness, hoof injuries", "Observe for foot baths, hoof mats, and foaming systems", "Observe for hoof cleaning solutions", "Observe for hoof trimming materials", "Observe for floor smooth & slipper or hard and firm"]},
-        "Udder hygiene": {"type": "text_area_list", "list": ["Observe for dirt/dung splashes/particle adherence on udder and teat surfaces and hip joint", "Observe for swollen and reddening of teats", "Observe for udder and teat injuries", "Observe for soil, dust and animal wastages on the floor cleanness", "Observe milkers hands for nails", "Observe for teat dippers usage and availability", "Observe for udder disinfecting solutions"]},
-        "Life Cycle Records": {"type": "text_area_list", "list": ["Check for records", "Check for records of cattle life cycle (age, lactations, calf mortality etc.)", "Check if there are digital records"]},
-        "Breeding Records": {"type": "text_area_list", "list": ["Check for records", "Check for records of dates of heat, service and parturition", "Check if there are digital records"]}
     }
-}
 
-# --- Session State Initialization and Data Loading ---
-if 'farmer_interview_data' not in st.session_state:
-    if os.path.exists(CSV_FILE):
+QUESTIONS = get_questions()
+
+if "section_keys" not in st.session_state:
+    st.session_state.section_keys = list(QUESTIONS.keys())
+
+# --- Helper Functions ---
+def get_full_key(parent_key, question_label):
+    return f"{parent_key}|{question_label}"
+
+def get_default_index(options, saved_value):
+    if saved_value in options:
         try:
-            st.session_state.farmer_interview_data = pd.read_csv(CSV_FILE).to_dict('records')
-        except (pd.errors.EmptyDataError, TypeError):
-            st.session_state.farmer_interview_data = []
+            return options.index(saved_value)
+        except ValueError:
+            return 0
+    return 0
+
+def render_nested_questions(questions_data, parent_key=""):
+    responses = st.session_state.responses
+    excluded_keys = [
+        "Consent to fill the form", "Signature of the respondent",
+        "Reviewed and confirmed by Route Incharge", "Signature of Route In charge",
+        "Reviewed and confirmed by Ksheersagar SPOC", "Signature of SPOC"
+    ]
+
+    for label, value in questions_data.items():
+        if label in excluded_keys:
+            continue
+
+        full_key = get_full_key(parent_key, label)
+
+        if isinstance(value, dict):
+            st.markdown(f"#### {label}")
+            render_nested_questions(value, parent_key=full_key)
+            st.markdown("---")
+        else:
+            if isinstance(value, list):
+                if "multiple options" in label:
+                    responses[full_key] = st.multiselect(
+                        label, value, default=responses.get(full_key, []), key=full_key
+                    )
+                else:
+                    responses[full_key] = st.radio(
+                        label, value, index=get_default_index(value, responses.get(full_key)), key=full_key
+                    )
+            elif value is None:
+                if "Date" in label:
+                    default_date = responses.get(full_key, date.today())
+                    if not isinstance(default_date, (datetime, date)):
+                        default_date = date.today()
+                    responses[full_key] = st.date_input(label, value=default_date, key=full_key)
+                else:
+                    responses[full_key] = st.text_input(label, value=responses.get(full_key, ""), key=full_key)
+            
+            remarks_key = f"{full_key}|Remarks"
+            responses[remarks_key] = st.text_area(f"Remarks for **{label}**", value=responses.get(remarks_key, ""), key=remarks_key)
+            st.markdown("<br>", unsafe_allow_html=True)
+
+def show_questions_for_block(block_name, questions_data):
+    st.header(block_name)
+    with st.form(key=f"form-{block_name}"):
+        render_nested_questions(questions_data, parent_key=block_name)
+        
+        st.markdown("---")
+        col1, _, col2 = st.columns([1, 3, 1])
+        
+        with col1:
+            if st.session_state.step > 0:
+                if st.form_submit_button("⬅️ Back"):
+                    st.session_state.step -= 1
+                    st.rerun()
+        
+        with col2:
+            is_last_step = st.session_state.step == len(st.session_state.section_keys)
+            button_text = "Review & Submit ➡️" if is_last_step else "Save and Next ➡️"
+            if st.form_submit_button(button_text):
+                st.session_state.step += 1
+                st.rerun()
+
+# --- Application Flow ---
+N = len(st.session_state.section_keys) # Total number of survey sections
+
+# Step 0: Consent Form
+if st.session_state.step == 0:
+    st.title("Project Ksheersagar – TNS Associate Self-Assessment")
+    st.header("Step 0: Informed Consent & Authorization")
+    
+    with st.form("consent_form"):
+        responses = st.session_state.responses
+        consent_options = ["Yes", "No"]
+        
+        # Consent and signature inputs
+        responses["Consent to fill the form"] = st.radio("Consent to fill the form", consent_options, index=0, key="consent-radio")
+        responses["Signature of the respondent"] = st.text_input("Signature of the respondent", value=responses.get("Signature of the respondent", ""), key="signature-respondent")
+        st.markdown("---")
+        responses["Reviewed and confirmed by Route Incharge"] = st.radio("Reviewed and confirmed by Route Incharge", consent_options, index=0, key="confirmed-route-incharge")
+        responses["Signature of Route In charge"] = st.text_input("Signature of Route In charge", value=responses.get("Signature of Route In charge", ""), key="signature-route-incharge")
+        st.markdown("---")
+        responses["Reviewed and confirmed by Ksheersagar SPOC"] = st.radio("Reviewed and confirmed by Ksheersagar SPOC", consent_options, index=0, key="confirmed-spoc")
+        responses["Signature of SPOC"] = st.text_input("Signature of SPOC", value=responses.get("Signature of SPOC", ""), key="signature-spoc")
+
+        if st.form_submit_button("Start Survey"):
+            if responses["Consent to fill the form"] == "Yes" and responses.get("Signature of the respondent", "").strip():
+                st.session_state.step = 1
+                st.rerun()
+            else:
+                st.error("Consent and Respondent's signature are required to start the survey.")
+
+# Steps 1 through N: Survey Sections
+elif 1 <= st.session_state.step <= N:
+    current_step_index = st.session_state.step - 1
+    current_key = st.session_state.section_keys[current_step_index]
+    st.title("TNS Self-Assessment")
+    st.markdown(f"**Part {st.session_state.step} of {N}: {current_key}**")
+    show_questions_for_block(current_key, QUESTIONS[current_key])
+
+# Final Step: Review and Submit (Step N + 1)
+elif st.session_state.step == N + 1: 
+    st.title("Final Review and Submission")
+    
+    status_message = st.empty()
+    
+    with st.form("final_submit_form"):
+        st.subheader("Review Your Responses")
+        
+        # Prepare data for review display and final submission
+        final_data = {
+            k: ("; ".join(map(str, v)) if isinstance(v, list) else str(v))
+            for k, v in st.session_state.responses.items() if v not in [None, "", []]
+        }
+
+        if not final_data:
+            st.warning("No complete responses were recorded. Please go back and fill out the form.")
+            can_submit = False
+        else:
+            # Display responses in a readable table (excluding remarks for cleaner main table)
+            review_data = {
+                "Question": [k.split("|")[-1] for k in final_data.keys() if "|Remarks" not in k],
+                "Response": [v for k, v in final_data.items() if "|Remarks" not in k]
+            }
+            review_df = pd.DataFrame(review_data)
+            st.dataframe(review_df, use_container_width=True, hide_index=True)
+            can_submit = True
+
+
+        st.markdown("---")
+        c1, _, c2 = st.columns([1, 2, 1])
+        
+        with c1:
+            if st.form_submit_button("⬅️ Back to Edit"):
+                # Go back to the last section for editing (Step N)
+                st.session_state.step = N
+                st.rerun()
+        
+        with c2:
+            if st.form_submit_button("✅ Submit Final"):
+                if not can_submit:
+                    status_message.error("Cannot submit an empty form.")
+                else:
+                    # Show temporary status while saving
+                    with st.spinner('💾 Saving and submitting responses...'):
+                        
+                        # Append submission details to the final data package
+                        final_data["submission_id"] = str(uuid.uuid4())
+                        final_data["submission_timestamp"] = datetime.now().isoformat()
+                        df_to_save = pd.DataFrame([final_data])
+                        
+                        try:
+                            # Save to CSV
+                            header = not os.path.exists(CSV_FILE) or os.path.getsize(CSV_FILE) == 0
+                            df_to_save.to_csv(CSV_FILE, mode='a', header=header, index=False)
+                            
+                            # CRITICAL FIX: Save the exact final data structure for display on the confirmation page
+                            st.session_state.submitted_options = final_data
+                            
+                            st.session_state.step = N + 2 # Move to the confirmation page
+                            st.rerun()
+                            
+                        except Exception as e:
+                            status_message.error(f"❌ Error saving file: {e}")
+                            st.rerun() 
+
+# Confirmation Page (Submitted Options & Download) (Step N + 2)
+elif st.session_state.step == N + 2:
+    st.balloons()
+    st.success("🎉 Thank you! Your responses have been submitted successfully.")
+    st.markdown("---")
+    
+    st.subheader("Submitted Options")
+
+    # Display the final, recorded submission data using the dedicated session key
+    submitted_data = st.session_state.get("submitted_options", {})
+    if submitted_data:
+        # Create a DataFrame to display the submitted values, similar to the review table
+        display_data = {
+            "Question": [k.split("|")[-1] for k in submitted_data.keys() if "|Remarks" not in k],
+            "Response": [v for k, v in submitted_data.items() if "|Remarks" not in k]
+        }
+        st.dataframe(pd.DataFrame(display_data), use_container_width=True, hide_index=True)
     else:
-        st.session_state.farmer_interview_data = []
+        st.info("The detailed options are not available in this session, but the data was successfully saved to the CSV file.")
+    
+    st.markdown("---")
 
-if 'current_entry' not in st.session_state:
-    st.session_state['current_entry'] = {
-        'id': str(uuid.uuid4()),
-        'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
+    # The code to make the CSV downloadable
+    try:
+        # Read the file content for download
+        with open(CSV_FILE, "r") as f:
+            csv_content = f.read()
+            st.download_button(
+                label="⬇️ Download All Responses (CSV)",
+                data=csv_content,
+                file_name=CSV_FILE,
+                mime="text/csv",
+                key="download_submitted_data"
+            )
+    except FileNotFoundError:
+        st.warning("The responses file is not yet available. It will appear after the first submission.")
+    except Exception as e:
+        st.error(f"Could not read the CSV file for download: {e}")
 
-entry = st.session_state['current_entry']
-
-def get_default_value(key, default_value=None):
-    """Safely retrieves a value from the current entry, initializing if missing."""
-    return entry.setdefault(key, default_value)
-
-# --- App Title ---
-st.title("Project Ksheersagar – Farmer Interview Booklet")
-
-# --- Main App Logic ---
-# --- Start/Reset Buttons ---
-col1, col2, _ = st.columns([1, 1, 3])
-with col1:
-    if st.button("🔄 Start New Interview", key="start_new_btn_top"):
-        for key in ['current_entry', 'last_submission_data']:
-            if key in st.session_state:
+    st.markdown("---")
+    
+    if st.button("Start New Survey"):
+        # Clear state to begin a new survey
+        for key in list(st.session_state.keys()):
+            # Only delete survey-specific data, keep configuration keys
+            if key not in ["section_keys"]: 
                 del st.session_state[key]
         st.rerun()
-with col2:
-    if st.button("🗑️ Clear and Reset Current Form", key="reset_top_button"):
-        if 'current_entry' in st.session_state:
-            del st.session_state['current_entry']
-        st.info("Form has been reset. Rerunning...")
-        st.rerun()
-st.markdown("---")
-
-# --- Informed Consent ---
-st.header("Informed Consent")
-st.markdown("Namaste. My name is **[Your Name]**. We are conducting this discussion to collect information on the current dairy farm structure, practices, challenges, and opportunities. Your participation is **voluntary** and your answers will be **confidential**.")
-consent_key = "initial_consent"
-consent_options = ["Yes", "No"]
-default_consent = get_default_value(consent_key, "No")
-consent_index = consent_options.index(default_consent) if default_consent in consent_options else 1
-# This is outside the form, so we can update 'entry' directly
-entry[consent_key] = st.radio(
-    "Do you agree to participate in the discussion, and give your permission for audio recording and photo documentation?",
-    consent_options,
-    index=consent_index,
-    key="consent_radio"
-)
-
-# --- Main Form ---
-if entry.get("initial_consent") == "Yes":
-
-    # --- Identification Section (Live entry, outside the main form) ---
-    st.header("1. Identification")
-    st.info("This section saves as you type.")
-    col1, col2 = st.columns(2)
-    with col1:
-        entry["dairy_partner"] = st.text_input("Name of Dairy Partner", value=get_default_value("dairy_partner", ""), key="dp_name_input")
-        entry["bmc_name"] = st.text_input("Name of BMC", value=get_default_value("bmc_name", ""), key="bmc_name_input")
-        entry["state"] = st.text_input("State", value=get_default_value("state", ""), key="state_input")
-    with col2:
-        entry["district"] = st.text_input("District", value=get_default_value("district", ""), key="district_input")
-        entry["village"] = st.text_input("Village", value=get_default_value("village", ""), key="village_input")
-        entry["interviewer"] = st.text_input("Name of Interviewer", value=get_default_value("interviewer", ""), key="interviewer_input")
-        default_date_val = get_default_value("date", datetime.now().date())
-        if isinstance(default_date_val, str):
-            try:
-                default_date_val = datetime.strptime(default_date_val, "%Y-%m-%d").date()
-            except ValueError:
-                default_date_val = datetime.now().date()
-        entry["date"] = st.date_input("Date", value=default_date_val, key="date_input")
-    st.markdown("---")
-
-    # --- Survey Questions Form ---
-    st.header("2. Survey Questionnaire")
-    st.warning("Your progress in this section is **NOT** saved live. Please click the **'💾 Save Progress'** button below to save your inputs.", icon="⚠️")
-    
-    # Use a dictionary to capture all form inputs
-    form_inputs = {}
-    
-    with st.form(key='survey_form', clear_on_submit=False):
-        for section_title, subsections in QUESTIONS.items():
-            with st.expander(f"Section: {section_title}", expanded=False):
-                if section_title == "Background Information":
-                    st.markdown("Tell me a little bit about your background information such as age, education, experience as a dairy farmer.")
-                    respondent_fields = ["Name", "Age", "Highest level of education", "Number of years working as a dairy farmer"]
-                    for i in range(1, 11):
-                        st.markdown(f"**Respondent {i}**")
-                        cols = st.columns(len(respondent_fields))
-                        for j, field_name in enumerate(respondent_fields):
-                            response_key = f"respondent_{i}_{field_name.replace(' ', '_').lower()}"
-                            with cols[j]:
-                                # Capture input directly into form_inputs
-                                form_inputs[response_key] = st.text_input(
-                                    field_name,
-                                    value=get_default_value(response_key, ""),
-                                    key=f"bg_{response_key}", # Unique widget key
-                                    label_visibility="collapsed" if i > 1 else "visible"
-                                )
-                        st.markdown("---")
-                        
-                elif section_title == "Basic Household Information":
-                    st.markdown("I would like to know a few pieces of information about the dairy farm structure size and types of breeds commonly used by the dairy farming community here.")
-                    for question_text, question_details in subsections.items():
-                        q_type = question_details["type"]
-                        q_options = question_details.get("options")
-                        # Use question_text as the entry key for simplicity
-                        response_key = question_text
-                        
-                        if q_type == "radio":
-                            default_val = get_default_value(response_key, q_options[0])
-                            default_idx = q_options.index(default_val) if default_val in q_options else 0
-                            form_inputs[response_key] = st.radio(question_text, options=q_options, index=default_idx, key=f"bi_{response_key}")
-                        elif q_type == "multiselect":
-                            default_multiselect = get_default_value(response_key, [])
-                            form_inputs[response_key] = st.multiselect(question_text, options=q_options, default=default_multiselect, key=f"bi_{response_key}")
-                        elif q_type == "text_input":
-                            form_inputs[response_key] = st.text_input(question_text, value=get_default_value(response_key, ""), key=f"bi_{response_key}")
-
-                        # Special case for 'Rented'
-                        if form_inputs.get(response_key) == "Rented":
-                            rent_key = "If Rented, what rent do you pay for your land (mention per month/per year)?"
-                            form_inputs[rent_key] = st.text_input(rent_key, value=get_default_value(rent_key, ""), key="rent_details_input")
-                        st.markdown("---")
-                        
-                elif section_title in ["Animal Care", "Cattle Breeding", "Women Empowerment"]:
-                    for subsection_title, questions in subsections.items():
-                        st.markdown(f"#### {subsection_title}")
-                        for question_text, question_details in questions.items():
-                            q_options = question_details.get("options")
-                            response_key = f"{section_title}-{subsection_title}-{question_text}"
-                            
-                            default_val = get_default_value(response_key, q_options[0])
-                            default_idx = q_options.index(default_val) if default_val in q_options else 0
-                            
-                            form_inputs[response_key] = st.radio(question_text, options=q_options, index=default_idx, key=f"sec_{response_key}")
-                            
-                            remarks_key = f"Remarks for {response_key}"
-                            form_inputs[remarks_key] = st.text_area(f"Remarks for **{question_text}** (Optional)", value=get_default_value(remarks_key, ""), key=f"remarks_sec_{response_key}")
-                            st.markdown("---")
-                            
-                elif section_title == "Farmer Participation Questionnaire":
-                    for subsection_title, question_details in subsections.items():
-                        st.markdown(f"#### {subsection_title}")
-                        if question_details["type"] == "multiselect_list":
-                            st.write(subsection_title)
-                            for activity in question_details["list"]:
-                                response_key = f"Who performs: {activity}"
-                                form_inputs[response_key] = st.multiselect(activity, options=question_details["options"], default=get_default_value(response_key, []), key=f"fpq_{response_key}")
-                                st.markdown("---")
-                                
-                elif section_title in ["Farm Observation", "Animal Observation"]:
-                    for subsection_title, question_details in subsections.items():
-                        st.markdown(f"#### {subsection_title}")
-                        if question_details["type"] == "radio":
-                            response_key = f"Score: {subsection_title}"
-                            q_options = question_details["options"]
-                            default_val = get_default_value(response_key, q_options[0])
-                            default_idx = q_options.index(default_val) if default_val in q_options else 0
-                            
-                            form_inputs[response_key] = st.radio("Score", options=q_options, index=default_idx, key=f"obs_{response_key}")
-                            
-                            remarks_key = f"Remarks for Score: {subsection_title}"
-                            form_inputs[remarks_key] = st.text_area("Remarks", value=get_default_value(remarks_key, ""), key=f"remarks_obs_{response_key}")
-                            
-                        elif question_details["type"] in ["text_area", "text_area_list"]:
-                            for item in question_details["list"]:
-                                response_key = f"Observation: {subsection_title} - {item}"
-                                form_inputs[response_key] = st.text_area(item, value=get_default_value(response_key, ""), key=f"obs_{response_key}")
-                                
-                        st.markdown("---")
-
-        submitted = st.form_submit_button("💾 Save Progress")
         
-        # --- FIX: TRANSFER FORM DATA TO SESSION STATE ON SUBMIT ---
-        if submitted:
-            # Update the main session state entry with ALL captured form inputs
-            entry.update(form_inputs)
-            
-            # Special case cleanup for 'Rented'
-            rent_key = "If Rented, what rent do you pay for your land (mention per month/per year)?"
-            basic_household_key = "How did you acquire your dairy farm land?"
-            if entry.get(basic_household_key) != "Rented" and rent_key in entry:
-                del entry[rent_key]
-
-            st.session_state['current_entry'] = entry
-            st.success("Progress saved! You can continue editing or finalize the submission below.")
-
-    st.header("3. Final Submission")
-    st.markdown("---")
-    if st.button("✅ Finalize and Submit Interview", key="final_submit_btn"):
-        # We need to explicitly submit the form one last time to capture the latest inputs 
-        # if the user skipped the "Save Progress" button.
-        # This is a common pattern to ensure final data capture.
-        # However, the simple pattern is to ensure the form is submitted first.
-        # Since we use entry.update(form_inputs) on 'Save Progress', we rely on that. 
-        # We will use the 'form_inputs' to check the current values which are in st.session_state 
-        # and update 'entry' from there, as the latest data lives in the widget states.
-        
-        # Since the widgets inside the form have unique keys like 'bi_question_text', we can grab the data directly
-        # from st.session_state and merge it into 'entry'.
-        
-        # Rerun the logic to gather all inputs from session state keys one final time
-        final_form_data = {}
-        for k in form_inputs.keys():
-            # Widget keys were f"prefix_{response_key}". We must access the actual widget key's value.
-            if k == "How did you acquire your dairy farm land?":
-                 widget_key = f"bi_{k}"
-            elif k == "If Rented, what rent do you pay for your land (mention per month/per year)?":
-                 widget_key = "rent_details_input"
-            elif k.startswith(("respondent_", "Who performs:")):
-                 widget_key = f"{'bg' if k.startswith('respondent_') else 'fpq'}_{k}"
-            elif k.startswith(("Remarks for Score:", "Score:")):
-                 widget_key = f"obs_{k.replace('Score:', '').strip()}" if k.startswith("Score:") else f"remarks_obs_{k.replace('Remarks for Score:', '').strip()}"
-            elif k.startswith(("Observation:", "Remarks for")):
-                 widget_key = f"obs_{k}" if k.startswith("Observation:") else f"remarks_sec_{k}"
-            elif 'section_title' in k.lower():
-                 widget_key = f"sec_{k}"
-            else:
-                widget_key = f"bi_{k}" # Fallback
-                
-            # Use the actual Streamlit widget key (which is in st.session_state)
-            if widget_key in st.session_state:
-                final_form_data[k] = st.session_state[widget_key]
-
-        entry.update(final_form_data)
-        
-        required_fields = ["dairy_partner", "interviewer", "initial_consent"]
-        if not all(entry.get(f) for f in required_fields):
-            st.error("Please ensure the Identification section (Dairy Partner and Interviewer Name) and Consent are completed.")
-        else:
-            entry["submission_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            entry["submission_id"] = str(uuid.uuid4())
-            st.session_state.farmer_interview_data.append(entry.copy())
-            df_all = pd.DataFrame(st.session_state.farmer_interview_data)
-            df_all.to_csv(CSV_FILE, index=False)
-            st.session_state['last_submission_data'] = pd.DataFrame([entry])
-            st.success("Interview submitted successfully! 🎉 The form has been reset for the next interview.")
-            del st.session_state['current_entry']
-            st.rerun()
-
-elif entry.get("initial_consent") == "No" and st.session_state.get('consent_radio') == "No":
-    st.warning("Participation consent is required to proceed with the survey.")
-
-# --- Download Section ---
-if 'last_submission_data' in st.session_state and not st.session_state.get('last_submission_data', pd.DataFrame()).empty:
-    st.header("Submission Complete & Download Options")
-    df_latest = st.session_state['last_submission_data']
-    latest_csv = df_latest.to_csv(index=False).encode("utf-8")
-    submission_id_short = df_latest['id'].iloc[0][:8]
-    # Handle case where timestamp might be missing (though unlikely after successful submit)
-    timestamp_str = df_latest['submission_timestamp'].iloc[0].replace(' ', '_').replace(':', '-') if 'submission_timestamp' in df_latest.columns and not df_latest['submission_timestamp'].empty else datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    filename = f"FIB_Response_{submission_id_short}_{timestamp_str}.csv"
-    st.download_button(
-        label="⬇️ Download This Response Only (CSV)",
-        data=latest_csv,
-        file_name=filename,
-        mime="text/csv",
-    )
-    st.markdown("---")
-
-st.header("Previously Submitted Responses")
-if st.session_state.farmer_interview_data:
-    df_all = pd.DataFrame(st.session_state.farmer_interview_data)
-    display_cols = [col for col in df_all.columns if not col.startswith(('Observation:', 'Remarks for'))]
-    st.dataframe(df_all[display_cols].tail(10), use_container_width=True)
-    csv_download_all = df_all.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        "Download All Submissions (Master CSV)",
-        csv_download_all,
-        file_name="farmer_interview_all.csv",
-        mime="text/csv"
-    )
+# Fallback for unexpected state (resets the app for safety)
 else:
-    st.info("No responses yet.")
+    # This catches any unexpected step value other than 0 (which is handled above)
+    if st.session_state.step != 0:
+        st.error("🚨 Application in an unexpected state. Restarting survey from the beginning.")
+        for key in list(st.session_state.keys()):
+            if key not in ["section_keys"]:
+                del st.session_state[key]
+        st.rerun()
