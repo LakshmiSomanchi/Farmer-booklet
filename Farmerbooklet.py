@@ -145,7 +145,6 @@ QUESTIONS = {
     }
 }
 
-
 # --- Session State Initialization and Data Loading ---
 if 'farmer_interview_data' not in st.session_state:
     if os.path.exists(CSV_FILE):
@@ -180,17 +179,20 @@ with col1:
             if key in st.session_state:
                 del st.session_state[key]
         st.rerun()
+
 with col2:
     if st.button("🗑️ Clear and Reset Current Form", key="reset_top_button"):
         if 'current_entry' in st.session_state:
             del st.session_state['current_entry']
         st.info("Form has been reset. Rerunning...")
         st.rerun()
+
 st.markdown("---")
 
 # --- Informed Consent ---
 st.header("Informed Consent")
 st.markdown("Namaste. My name is **[Your Name]**. We are conducting this discussion to collect information on the current dairy farm structure, practices, challenges, and opportunities. Your participation is **voluntary** and your answers will be **confidential**.")
+
 consent_key = "initial_consent"
 consent_options = ["Yes", "No"]
 default_consent = get_default_value(consent_key, "No")
@@ -204,7 +206,6 @@ entry[consent_key] = st.radio(
 
 # --- Main Form ---
 if entry.get("initial_consent") == "Yes":
-
     # --- Identification Section (Live entry, outside the main form) ---
     st.header("1. Identification")
     st.info("This section saves as you type.")
@@ -224,12 +225,13 @@ if entry.get("initial_consent") == "Yes":
             except ValueError:
                 default_date_val = datetime.now().date()
         entry["date"] = st.date_input("Date", value=default_date_val, key="date_input")
+
     st.markdown("---")
 
     # --- Survey Questions Form ---
     st.header("2. Survey Questionnaire")
-    st.warning("Your progress in this section is **NOT** saved live. Please click the **'💾 Save Progress'** button below to save your inputs.", icon="⚠️")
-    
+    st.warning("Your progress in this section is **NOT** saved live. Please click the **'✅ Finalize and Submit Interview'** button at the bottom to save your inputs.", icon="⚠️")
+
     with st.form(key='survey_form', clear_on_submit=False):
         for section_title, subsections in QUESTIONS.items():
             with st.expander(f"Section: {section_title}", expanded=False):
@@ -249,6 +251,7 @@ if entry.get("initial_consent") == "Yes":
                                     label_visibility="collapsed" if i > 1 else "visible"
                                 )
                         st.markdown("---")
+
                 elif section_title == "Basic Household Information":
                     st.markdown("I would like to know a few pieces of information about the dairy farm structure size and types of breeds commonly used by the dairy farming community here.")
                     for question_text, question_details in subsections.items():
@@ -267,6 +270,7 @@ if entry.get("initial_consent") == "Yes":
                             rent_key = "If Rented, what rent do you pay for your land (mention per month/per year)?"
                             entry[rent_key] = st.text_input(rent_key, value=get_default_value(rent_key, ""), key="rent_details_input")
                         st.markdown("---")
+
                 elif section_title in ["Animal Care", "Cattle Breeding", "Women Empowerment"]:
                     for subsection_title, questions in subsections.items():
                         st.markdown(f"#### {subsection_title}")
@@ -279,6 +283,7 @@ if entry.get("initial_consent") == "Yes":
                             remarks_key = f"Remarks for {response_key}"
                             entry[remarks_key] = st.text_area(f"Remarks for **{question_text}** (Optional)", value=get_default_value(remarks_key, ""), key=f"remarks-{response_key}")
                             st.markdown("---")
+
                 elif section_title == "Farmer Participation Questionnaire":
                     for subsection_title, question_details in subsections.items():
                         st.markdown(f"#### {subsection_title}")
@@ -288,6 +293,7 @@ if entry.get("initial_consent") == "Yes":
                                 response_key = f"Who performs: {activity}"
                                 entry[response_key] = st.multiselect(activity, options=question_details["options"], default=get_default_value(response_key, []), key=response_key)
                                 st.markdown("---")
+
                 elif section_title in ["Farm Observation", "Animal Observation"]:
                     for subsection_title, question_details in subsections.items():
                         st.markdown(f"#### {subsection_title}")
@@ -304,56 +310,16 @@ if entry.get("initial_consent") == "Yes":
                                 response_key = f"Observation: {subsection_title} - {item}"
                                 entry[response_key] = st.text_area(item, value=get_default_value(response_key, ""), key=response_key)
                             st.markdown("---")
+        
+        # --- NEW: Final Submit button is now inside the form ---
+        submitted = st.form_submit_button("✅ Finalize and Submit Interview")
 
-        submitted = st.form_submit_button("💾 Save Progress")
         if submitted:
-            st.success("Progress saved! You can continue editing or finalize the submission below.")
+            required_fields = ["dairy_partner", "interviewer", "initial_consent"]
+            if not all(entry.get(f) for f in required_fields):
+                st.error("Please ensure the Identification section (Dairy Partner and Interviewer Name) and Consent are completed.")
+            else:
+                entry["submission_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                entry["submission_id"] = str(uuid.uuid4())
 
-    st.header("3. Final Submission")
-    st.markdown("---")
-    if st.button("✅ Finalize and Submit Interview", key="final_submit_btn"):
-        required_fields = ["dairy_partner", "interviewer", "initial_consent"]
-        if not all(entry.get(f) for f in required_fields):
-            st.error("Please ensure the Identification section (Dairy Partner and Interviewer Name) and Consent are completed.")
-        else:
-            entry["submission_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            entry["submission_id"] = str(uuid.uuid4())
-            st.session_state.farmer_interview_data.append(entry.copy())
-            df_all = pd.DataFrame(st.session_state.farmer_interview_data)
-            df_all.to_csv(CSV_FILE, index=False)
-            st.session_state['last_submission_data'] = pd.DataFrame([entry])
-            st.success("Interview submitted successfully! 🎉 The form has been reset for the next interview.")
-            del st.session_state['current_entry']
-            st.rerun()
-
-elif entry.get("initial_consent") == "No" and st.session_state.get('consent_radio') == "No":
-    st.warning("Participation consent is required to proceed with the survey.")
-
-if 'last_submission_data' in st.session_state and not st.session_state.get('last_submission_data', pd.DataFrame()).empty:
-    st.header("Submission Complete & Download Options")
-    df_latest = st.session_state['last_submission_data']
-    latest_csv = df_latest.to_csv(index=False).encode("utf-8")
-    submission_id_short = df_latest['id'].iloc[0][:8]
-    filename = f"FIB_Response_{submission_id_short}_{df_latest['submission_timestamp'].iloc[0].replace(' ', '_').replace(':', '-')}.csv"
-    st.download_button(
-        label="⬇️ Download This Response Only (CSV)",
-        data=latest_csv,
-        file_name=filename,
-        mime="text/csv",
-    )
-    st.markdown("---")
-
-st.header("Previously Submitted Responses")
-if st.session_state.farmer_interview_data:
-    df_all = pd.DataFrame(st.session_state.farmer_interview_data)
-    display_cols = [col for col in df_all.columns if not col.startswith(('Observation:', 'Remarks for'))]
-    st.dataframe(df_all[display_cols].tail(10), use_container_width=True)
-    csv_download_all = df_all.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        "Download All Submissions (Master CSV)",
-        csv_download_all,
-        file_name="farmer_interview_all.csv",
-        mime="text/csv"
-    )
-else:
-    st.info("No responses yet.")
+                st.session_state.farmer_intervi
