@@ -161,11 +161,10 @@ if 'current_entry' not in st.session_state:
         'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
 
-entry = st.session_state['current_entry']
-
 def get_default_value(key, default_value=None):
     """Safely retrieves a value from the current entry, initializing if missing."""
-    return entry.setdefault(key, default_value)
+    # This function now primarily helps in setting the initial state of widgets
+    return st.session_state.current_entry.get(key, default_value)
 
 # --- App Title ---
 st.title("Project Ksheersagar – Farmer Interview Booklet")
@@ -183,143 +182,7 @@ with col1:
 with col2:
     if st.button("🗑️ Clear and Reset Current Form", key="reset_top_button"):
         if 'current_entry' in st.session_state:
+            # Clear widget states associated with the form if needed
+            # This is often handled by rerunning and re-initializing current_entry
             del st.session_state['current_entry']
-        st.info("Form has been reset. Rerunning...")
-        st.rerun()
-
-st.markdown("---")
-
-# --- Informed Consent ---
-st.header("Informed Consent")
-st.markdown("Namaste. My name is **[Your Name]**. We are conducting this discussion to collect information on the current dairy farm structure, practices, challenges, and opportunities. Your participation is **voluntary** and your answers will be **confidential**.")
-
-consent_key = "initial_consent"
-consent_options = ["Yes", "No"]
-default_consent = get_default_value(consent_key, "No")
-consent_index = consent_options.index(default_consent) if default_consent in consent_options else 1
-entry[consent_key] = st.radio(
-    "Do you agree to participate in the discussion, and give your permission for audio recording and photo documentation?",
-    consent_options,
-    index=consent_index,
-    key="consent_radio"
-)
-
-# --- Main Form ---
-if entry.get("initial_consent") == "Yes":
-    # --- Identification Section (Live entry, outside the main form) ---
-    st.header("1. Identification")
-    st.info("This section saves as you type.")
-    col1, col2 = st.columns(2)
-    with col1:
-        entry["dairy_partner"] = st.text_input("Name of Dairy Partner", value=get_default_value("dairy_partner", ""), key="dp_name_input")
-        entry["bmc_name"] = st.text_input("Name of BMC", value=get_default_value("bmc_name", ""), key="bmc_name_input")
-        entry["state"] = st.text_input("State", value=get_default_value("state", ""), key="state_input")
-    with col2:
-        entry["district"] = st.text_input("District", value=get_default_value("district", ""), key="district_input")
-        entry["village"] = st.text_input("Village", value=get_default_value("village", ""), key="village_input")
-        entry["interviewer"] = st.text_input("Name of Interviewer", value=get_default_value("interviewer", ""), key="interviewer_input")
-        default_date_val = get_default_value("date", datetime.now().date())
-        if isinstance(default_date_val, str):
-            try:
-                default_date_val = datetime.strptime(default_date_val, "%Y-%m-%d").date()
-            except ValueError:
-                default_date_val = datetime.now().date()
-        entry["date"] = st.date_input("Date", value=default_date_val, key="date_input")
-
-    st.markdown("---")
-
-    # --- Survey Questions Form ---
-    st.header("2. Survey Questionnaire")
-    st.warning("Your progress in this section is **NOT** saved live. Please click the **'✅ Finalize and Submit Interview'** button at the bottom to save your inputs.", icon="⚠️")
-
-    with st.form(key='survey_form', clear_on_submit=False):
-        for section_title, subsections in QUESTIONS.items():
-            with st.expander(f"Section: {section_title}", expanded=False):
-                if section_title == "Background Information":
-                    st.markdown("Tell me a little bit about your background information such as age, education, experience as a dairy farmer.")
-                    respondent_fields = ["Name", "Age", "Highest level of education", "Number of years working as a dairy farmer"]
-                    for i in range(1, 11):
-                        st.markdown(f"**Respondent {i}**")
-                        cols = st.columns(len(respondent_fields))
-                        for j, field_name in enumerate(respondent_fields):
-                            response_key = f"respondent_{i}_{field_name.replace(' ', '_').lower()}"
-                            with cols[j]:
-                                entry[response_key] = st.text_input(
-                                    field_name,
-                                    value=get_default_value(response_key, ""),
-                                    key=f"bg_{response_key}",
-                                    label_visibility="collapsed" if i > 1 else "visible"
-                                )
-                        st.markdown("---")
-
-                elif section_title == "Basic Household Information":
-                    st.markdown("I would like to know a few pieces of information about the dairy farm structure size and types of breeds commonly used by the dairy farming community here.")
-                    for question_text, question_details in subsections.items():
-                        q_type = question_details["type"]
-                        q_options = question_details.get("options")
-                        response_key = question_text.replace(' ', '_').replace('?', '').replace('(Multiple_Answers_Possible)', '').replace(',', '').replace('/', '').lower()
-                        if q_type == "radio":
-                            default_val = get_default_value(question_text, q_options[0])
-                            default_idx = q_options.index(default_val) if default_val in q_options else 0
-                            entry[question_text] = st.radio(question_text, options=q_options, index=default_idx, key=response_key)
-                        elif q_type == "multiselect":
-                            entry[question_text] = st.multiselect(question_text, options=q_options, default=get_default_value(question_text, []), key=response_key)
-                        elif q_type == "text_input":
-                            entry[question_text] = st.text_input(question_text, value=get_default_value(question_text, ""), key=response_key)
-                        if question_text == "How did you acquire your dairy farm land?" and entry.get(question_text) == "Rented":
-                            rent_key = "If Rented, what rent do you pay for your land (mention per month/per year)?"
-                            entry[rent_key] = st.text_input(rent_key, value=get_default_value(rent_key, ""), key="rent_details_input")
-                        st.markdown("---")
-
-                elif section_title in ["Animal Care", "Cattle Breeding", "Women Empowerment"]:
-                    for subsection_title, questions in subsections.items():
-                        st.markdown(f"#### {subsection_title}")
-                        for question_text, question_details in questions.items():
-                            q_options = question_details.get("options")
-                            response_key = f"{section_title}-{subsection_title}-{question_text}"
-                            default_val = get_default_value(response_key, q_options[0])
-                            default_idx = q_options.index(default_val) if default_val in q_options else 0
-                            entry[response_key] = st.radio(question_text, options=q_options, index=default_idx, key=response_key)
-                            remarks_key = f"Remarks for {response_key}"
-                            entry[remarks_key] = st.text_area(f"Remarks for **{question_text}** (Optional)", value=get_default_value(remarks_key, ""), key=f"remarks-{response_key}")
-                            st.markdown("---")
-
-                elif section_title == "Farmer Participation Questionnaire":
-                    for subsection_title, question_details in subsections.items():
-                        st.markdown(f"#### {subsection_title}")
-                        if question_details["type"] == "multiselect_list":
-                            st.write(subsection_title)
-                            for activity in question_details["list"]:
-                                response_key = f"Who performs: {activity}"
-                                entry[response_key] = st.multiselect(activity, options=question_details["options"], default=get_default_value(response_key, []), key=response_key)
-                                st.markdown("---")
-
-                elif section_title in ["Farm Observation", "Animal Observation"]:
-                    for subsection_title, question_details in subsections.items():
-                        st.markdown(f"#### {subsection_title}")
-                        if question_details["type"] == "radio":
-                            response_key = f"Score: {subsection_title}"
-                            q_options = question_details["options"]
-                            default_val = get_default_value(response_key, q_options[0])
-                            default_idx = q_options.index(default_val) if default_val in q_options else 0
-                            entry[response_key] = st.radio("Score", options=q_options, index=default_idx, key=response_key)
-                            remarks_key = f"Remarks for Score: {subsection_title}"
-                            entry[remarks_key] = st.text_area("Remarks", value=get_default_value(remarks_key, ""), key=f"remarks-{response_key}")
-                        elif question_details["type"] in ["text_area", "text_area_list"]:
-                            for item in question_details["list"]:
-                                response_key = f"Observation: {subsection_title} - {item}"
-                                entry[response_key] = st.text_area(item, value=get_default_value(response_key, ""), key=response_key)
-                            st.markdown("---")
-        
-        # --- NEW: Final Submit button is now inside the form ---
-        submitted = st.form_submit_button("✅ Finalize and Submit Interview")
-
-        if submitted:
-            required_fields = ["dairy_partner", "interviewer", "initial_consent"]
-            if not all(entry.get(f) for f in required_fields):
-                st.error("Please ensure the Identification section (Dairy Partner and Interviewer Name) and Consent are completed.")
-            else:
-                entry["submission_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                entry["submission_id"] = str(uuid.uuid4())
-
-                st.session_state.farmer_intervi
+        st.info("Form has been
