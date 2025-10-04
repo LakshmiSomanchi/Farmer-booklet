@@ -71,7 +71,7 @@ QUESTIONS = {
         "Reproductive Management Practices": {"I know what reproductive management practices and how it will benefit my cattle's production": {"options": awareness_scale, "type": "radio"}, "I know how to maintain a successful reproductive cycle of my cattle": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of reproductive management to cattle production and want to access in all aspects like veterinary support, feed, health for my cattle": {"options": agreement_scale, "type": "radio"}, "I have 100% access to veterinary support in reproductive management for my cattle (via veterinarians, para vets or government health camps, etc) and feed": {"options": access_scale, "type": "radio"}, "I can afford high quality feed, health care services, breeding services for 100% of my cattle": {"options": affordability_scale, "type": "radio"}, "I have 100% timely access to quality feed and veterinary support": {"options": access_scale, "type": "radio"}, "I have 100% access to quality feed and veterinary support in close proximity (doorstep/ BMC/ in village/nearby villages)": {"options": access_scale, "type": "radio"}},
         "Infertility": {"I know what is cattle infertility and know how it will affect my cattle production": {"options": awareness_scale, "type": "radio"}, "I know infertility treatments and measures to improve the fertility of cattle": {"options": knowledge_scale, "type": "radio"}, "Herbal Remedies are available to me for infertility treatment": {"options": availability_scale, "type": "radio"}, "I have 100% access to treat infertility for my cattle (via veterinarians, para vets or government health camps, dairy partner team etc)": {"options": access_scale, "type": "radio"}, "I can afford infertility treatment for 100% of my cattle": {"options": affordability_scale, "type": "radio"}, "I have 100% timely access to treatment and treat my cattle according to prescribed norms": {"options": access_scale, "type": "radio"}, "I have 100% access to treatment in close proximity (doorstep/BMC/in village/ nearby villages)": {"options": access_scale, "type": "radio"}},
         "Artificial Insemination Services": {"I know what are Al services and how they will benefit my cattle's production": {"options": awareness_scale, "type": "radio"}, "I know which type of AI straws are available as per breeding policy": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of credible semen sources and high-quality AI services to cattle production and want to access credible semen sources and high quality AI services for my cattle": {"options": agreement_scale, "type": "radio"}, "I have 100% access to credible semen sources and high-quality AI services for my cattle (via veterinarians, para vets or government health camps, etc)": {"options": access_scale, "type": "radio"}, "I can afford credible semen and high-quality AI services for 100% of my cattle": {"options": affordability_scale, "type": "radio"}, "I have 100% timely access to credible semen source and high quality Al services": {"options": access_scale, "type": "radio"}, "I have 100% access to credible semen sources and high quality AI services in close proximity (doorstep/BMC/ in village/ nearby villages)": {"options": access_scale, "type": "radio"}},
-        "Pregnancy Management": {"I know what pregnancy management is and how it will benefit my cattle's production": {"options": awareness_scale, "type": "radio"}, "I know caring for Pregnant animal by providing proper nutrition, health, stress-free environment and have reach out to Veterinarian for suggestions": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of pregnancy management to cattle production and want to access in all aspects like veterinary support, feed, health for my cattle": {"options": agreement_scale, "type": "radio"}, "I have 100% access to veterinary support in pregnancy support for my cattle (via veterinarians, para vets or government health camps, etc) and feed": {"options": access_scale, "type": "radio"}, "I can afford high quality feed/ ration for 100% of my cattle": {"options": affordability_scale, "type": "radio"}, "I have 100% timely access to quality feed and veterinary support": {"options": access_scale, "type": "radio"}, "I have 100% access to quality feed and veterinary support in close proximity (doorstep/ BMC/ in village/ nearby villages)": {"options": access_scale, "type": "radio"}},
+        "Pregnancy Management": {"I know what pregnancy management is and how it will benefit my cattle's production": {"options": awareness_scale, "type": "radio"}, "I know caring for Pregnant animal by providing proper nutrition, health, stress-free environment and have reach out to Veterinarian for suggestions": {"options": knowledge_scale, "type": "radio"}, "I know the benefits of pregnancy management to cattle production and want to access in all aspects like veterinary support, feed, health for my cattle": {"options": "agreement_scale", "type": "radio"}, "I have 100% access to veterinary support in pregnancy support for my cattle (via veterinarians, para vets or government health camps, etc) and feed": {"options": access_scale, "type": "radio"}, "I can afford high quality feed/ ration for 100% of my cattle": {"options": affordability_scale, "type": "radio"}, "I have 100% timely access to quality feed and veterinary support": {"options": access_scale, "type": "radio"}, "I have 100% access to quality feed and veterinary support in close proximity (doorstep/ BMC/ in village/ nearby villages)": {"options": access_scale, "type": "radio"}},
     },
     "Women Empowerment": {
         "Community Gender Sensitization": {"I know about the role of women in dairy farming and how they contribute to the dairy sector": {"options": awareness_scale, "type": "radio"}, "I know about gender roles in society and the importance of the role of women in dairy farming": {"options": knowledge_scale, "type": "radio"}, "I am sensitized to gender roles and role of women in dairy farming and recognize their importance and want to empower them": {"options": agreement_scale, "type": "radio"}, "I have access to resources to gain information and opportunity to learn about gender sensitivity": {"options": access_scale, "type": "radio"}},
@@ -166,6 +166,9 @@ entry = st.session_state['current_entry']
 
 def get_default_value(key, default_value=None):
     """Safely retrieves a value from the current entry, initializing if missing."""
+    # Ensure default for multiselect is an empty list if None is provided
+    if default_value is None and 'multiselect' in key.lower():
+        default_value = []
     return entry.setdefault(key, default_value)
 
 # --- App Title ---
@@ -220,6 +223,7 @@ if entry.get("initial_consent") == "Yes":
         default_date_val = get_default_value("date", datetime.now().date())
         if isinstance(default_date_val, str):
             try:
+                # Handle conversion from string (from CSV) to date object for st.date_input
                 default_date_val = datetime.strptime(default_date_val, "%Y-%m-%d").date()
             except ValueError:
                 default_date_val = datetime.now().date()
@@ -229,6 +233,10 @@ if entry.get("initial_consent") == "Yes":
     # --- Survey Questions Form ---
     st.header("2. Survey Questionnaire")
     st.warning("Your progress in this section is **NOT** saved live. Please click the **'💾 Save Progress'** button below to save your inputs.", icon="⚠️")
+    
+    # List to store all the keys we expect to be updated by the form widgets
+    # This helps in the final step of pulling data from st.session_state
+    form_widget_keys = []
     
     with st.form(key='survey_form', clear_on_submit=False):
         for section_title, subsections in QUESTIONS.items():
@@ -241,11 +249,13 @@ if entry.get("initial_consent") == "Yes":
                         cols = st.columns(len(respondent_fields))
                         for j, field_name in enumerate(respondent_fields):
                             response_key = f"respondent_{i}_{field_name.replace(' ', '_').lower()}"
+                            form_widget_keys.append(response_key) # Track key
                             with cols[j]:
+                                # Use the response_key as the widget key
                                 entry[response_key] = st.text_input(
                                     field_name,
                                     value=get_default_value(response_key, ""),
-                                    key=f"bg_{response_key}",
+                                    key=response_key, # Use the response_key here
                                     label_visibility="collapsed" if i > 1 else "visible"
                                 )
                         st.markdown("---")
@@ -255,30 +265,48 @@ if entry.get("initial_consent") == "Yes":
                         q_type = question_details["type"]
                         q_options = question_details.get("options")
                         response_key = question_text.replace(' ', '_').replace('?', '').replace('(Multiple_Answers_Possible)', '').replace(',', '').replace('/', '').lower()
+                        form_widget_keys.append(response_key) # Track key
+
                         if q_type == "radio":
                             default_val = get_default_value(question_text, q_options[0])
                             default_idx = q_options.index(default_val) if default_val in q_options else 0
-                            entry[question_text] = st.radio(question_text, options=q_options, index=default_idx, key=response_key)
+                            # Use the response_key as the widget key and rely on the return value
+                            st.session_state[response_key] = st.radio(question_text, options=q_options, index=default_idx, key=response_key)
                         elif q_type == "multiselect":
-                            entry[question_text] = st.multiselect(question_text, options=q_options, default=get_default_value(question_text, []), key=response_key)
+                            # Default for multiselect needs to be an empty list if not set
+                            default_multiselect = get_default_value(question_text, [])
+                            # Default for st.multiselect must be a list of selected options
+                            st.session_state[response_key] = st.multiselect(question_text, options=q_options, default=default_multiselect, key=response_key)
                         elif q_type == "text_input":
-                            entry[question_text] = st.text_input(question_text, value=get_default_value(question_text, ""), key=response_key)
-                        if question_text == "How did you acquire your dairy farm land?" and entry.get(question_text) == "Rented":
+                            st.session_state[response_key] = st.text_input(question_text, value=get_default_value(question_text, ""), key=response_key)
+
+                        # Special case for 'Rented'
+                        if question_text == "How did you acquire your dairy farm land?" and st.session_state.get(response_key) == "Rented":
                             rent_key = "If Rented, what rent do you pay for your land (mention per month/per year)?"
-                            entry[rent_key] = st.text_input(rent_key, value=get_default_value(rent_key, ""), key="rent_details_input")
+                            form_widget_keys.append(rent_key) # Track special key
+                            st.session_state[rent_key] = st.text_input(rent_key, value=get_default_value(rent_key, ""), key=rent_key)
                         st.markdown("---")
+                        
                 elif section_title in ["Animal Care", "Cattle Breeding", "Women Empowerment"]:
                     for subsection_title, questions in subsections.items():
                         st.markdown(f"#### {subsection_title}")
                         for question_text, question_details in questions.items():
                             q_options = question_details.get("options")
                             response_key = f"{section_title}-{subsection_title}-{question_text}"
+                            form_widget_keys.append(response_key) # Track key
+                            
                             default_val = get_default_value(response_key, q_options[0])
                             default_idx = q_options.index(default_val) if default_val in q_options else 0
-                            entry[response_key] = st.radio(question_text, options=q_options, index=default_idx, key=response_key)
+                            
+                            # Use the response_key as the widget key
+                            st.session_state[response_key] = st.radio(question_text, options=q_options, index=default_idx, key=response_key)
+                            
                             remarks_key = f"Remarks for {response_key}"
-                            entry[remarks_key] = st.text_area(f"Remarks for **{question_text}** (Optional)", value=get_default_value(remarks_key, ""), key=f"remarks-{response_key}")
+                            form_widget_keys.append(remarks_key) # Track remarks key
+                            # Use the remarks_key as the widget key
+                            st.session_state[remarks_key] = st.text_area(f"Remarks for **{question_text}** (Optional)", value=get_default_value(remarks_key, ""), key=remarks_key)
                             st.markdown("---")
+                            
                 elif section_title == "Farmer Participation Questionnaire":
                     for subsection_title, question_details in subsections.items():
                         st.markdown(f"#### {subsection_title}")
@@ -286,32 +314,83 @@ if entry.get("initial_consent") == "Yes":
                             st.write(subsection_title)
                             for activity in question_details["list"]:
                                 response_key = f"Who performs: {activity}"
-                                entry[response_key] = st.multiselect(activity, options=question_details["options"], default=get_default_value(response_key, []), key=response_key)
+                                form_widget_keys.append(response_key) # Track key
+                                # Use the response_key as the widget key
+                                st.session_state[response_key] = st.multiselect(activity, options=question_details["options"], default=get_default_value(response_key, []), key=response_key)
                                 st.markdown("---")
+                                
                 elif section_title in ["Farm Observation", "Animal Observation"]:
                     for subsection_title, question_details in subsections.items():
                         st.markdown(f"#### {subsection_title}")
                         if question_details["type"] == "radio":
                             response_key = f"Score: {subsection_title}"
+                            form_widget_keys.append(response_key) # Track key
                             q_options = question_details["options"]
                             default_val = get_default_value(response_key, q_options[0])
                             default_idx = q_options.index(default_val) if default_val in q_options else 0
-                            entry[response_key] = st.radio("Score", options=q_options, index=default_idx, key=response_key)
+                            # Use the response_key as the widget key
+                            st.session_state[response_key] = st.radio("Score", options=q_options, index=default_idx, key=response_key)
+                            
                             remarks_key = f"Remarks for Score: {subsection_title}"
-                            entry[remarks_key] = st.text_area("Remarks", value=get_default_value(remarks_key, ""), key=f"remarks-{response_key}")
+                            form_widget_keys.append(remarks_key) # Track remarks key
+                            # Use the remarks_key as the widget key
+                            st.session_state[remarks_key] = st.text_area("Remarks", value=get_default_value(remarks_key, ""), key=remarks_key)
+                            
                         elif question_details["type"] in ["text_area", "text_area_list"]:
                             for item in question_details["list"]:
                                 response_key = f"Observation: {subsection_title} - {item}"
-                                entry[response_key] = st.text_area(item, value=get_default_value(response_key, ""), key=response_key)
-                            st.markdown("---")
+                                form_widget_keys.append(response_key) # Track key
+                                # Use the response_key as the widget key
+                                st.session_state[response_key] = st.text_area(item, value=get_default_value(response_key, ""), key=response_key)
+                                
+                        st.markdown("---")
 
         submitted = st.form_submit_button("💾 Save Progress")
+        
+        # --- FIX APPLIED HERE ---
         if submitted:
+            # Iterate through all the response keys we generated and update the 'entry' dict
+            for key in form_widget_keys:
+                if key in st.session_state:
+                    # Update the entry dictionary with the new value from the form widget
+                    entry[key] = st.session_state[key]
+            
+            # Special case for the land acquisition follow-up, check if it was rendered and update
+            rent_key = "If Rented, what rent do you pay for your land (mention per month/per year)?"
+            if st.session_state.get('basic_household_information_how_did_you_acquire_your_dairy_farm_land') == "Rented":
+                if rent_key in st.session_state:
+                    entry[rent_key] = st.session_state[rent_key]
+            else:
+                 # Clear the key if the 'Rented' option is no longer selected
+                if rent_key in entry:
+                    del entry[rent_key]
+            
+            # Update the entire session state entry to force Streamlit to recognize the change
+            st.session_state['current_entry'] = entry
+            
             st.success("Progress saved! You can continue editing or finalize the submission below.")
 
     st.header("3. Final Submission")
     st.markdown("---")
     if st.button("✅ Finalize and Submit Interview", key="final_submit_btn"):
+        # The FIX ensures 'entry' is up-to-date from the last Save Progress click.
+        # However, if the user fills the form and clicks 'Finalize' *without* clicking 'Save Progress',
+        # the latest inputs are still stored in st.session_state. We need to pull them one last time.
+        
+        # --- RE-APPLY THE FIX FOR FINAL SUBMISSION ---
+        for key in form_widget_keys:
+             if key in st.session_state:
+                 entry[key] = st.session_state[key]
+
+        rent_key = "If Rented, what rent do you pay for your land (mention per month/per year)?"
+        if st.session_state.get('basic_household_information_how_did_you_acquire_your_dairy_farm_land') == "Rented":
+            if rent_key in st.session_state:
+                entry[rent_key] = st.session_state[rent_key]
+        else:
+             if rent_key in entry:
+                 del entry[rent_key]
+        # --- END OF RE-APPLY ---
+
         required_fields = ["dairy_partner", "interviewer", "initial_consent"]
         if not all(entry.get(f) for f in required_fields):
             st.error("Please ensure the Identification section (Dairy Partner and Interviewer Name) and Consent are completed.")
@@ -334,7 +413,9 @@ if 'last_submission_data' in st.session_state and not st.session_state.get('last
     df_latest = st.session_state['last_submission_data']
     latest_csv = df_latest.to_csv(index=False).encode("utf-8")
     submission_id_short = df_latest['id'].iloc[0][:8]
-    filename = f"FIB_Response_{submission_id_short}_{df_latest['submission_timestamp'].iloc[0].replace(' ', '_').replace(':', '-')}.csv"
+    # Check if 'submission_timestamp' exists before accessing it
+    timestamp_str = df_latest['submission_timestamp'].iloc[0].replace(' ', '_').replace(':', '-') if 'submission_timestamp' in df_latest.columns and not df_latest['submission_timestamp'].empty else datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"FIB_Response_{submission_id_short}_{timestamp_str}.csv"
     st.download_button(
         label="⬇️ Download This Response Only (CSV)",
         data=latest_csv,
